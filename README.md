@@ -11,7 +11,7 @@ timeline and vendors._
 [![CI](https://github.com/arsinghin/lehar/actions/workflows/ci.yml/badge.svg)](https://github.com/arsinghin/lehar/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Live app: `https://<your-vercel-project>.vercel.app` · Made by **AR Singh**
+Live app: `https://lehar-psi.vercel.app` · Made by **AR Singh**
 ([@arsinghin](https://github.com/arsinghin))
 
 ---
