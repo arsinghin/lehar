@@ -66,7 +66,7 @@ flowchart LR
   UI --> CORE[Deterministic core<br/>budget · timeline · trade-offs<br/>vendors · change parser · diff]
   CORE -->|numbers, dates, ripples| UI
   UI -->|only on explicit actions| API[/POST /api/ai<br/>Vercel Function/]
-  API --> G1[Gemini 3.8 Flash] -.fallback.-> G2[Gemini 3.1 Flash-Lite] -.fallback.-> OR[OpenRouter :free] -.fallback.-> R[Built-in rules]
+  API --> G1[Gemini 3.8 Flash] -.fallback.-> G2[Gemini 3.1 Flash-Lite] -.fallback.-> OR[OpenRouter :free<br/>Nemotron 3.5 Lightning] -.fallback.-> NV[NVIDIA NIM<br/>Nemotron 3.5 Lightning] -.fallback.-> R[Built-in rules]
   API -->|validated, sanitised JSON| UI
   UI <--> LS[(localStorage<br/>zod-validated)]
 ```
@@ -95,13 +95,17 @@ flowchart LR
 
 1. `gemini-3.8-flash` via the official **`@google/genai`** SDK, with `thinkingLevel: LOW` and a JSON-schema response.
 2. `gemini-3.1-flash-lite`: the fastest model, on the same free key.
-3. OpenRouter `:free` models (`openai/gpt-oss-120b:free`, then the `openrouter/free` router), with low
-   reasoning effort, the schema repeated in the prompt and a 30 s budget per attempt.
-4. **Built-in rules**, so the app never breaks and the fallback is labelled "Built-in suggestion".
+3. OpenRouter `nvidia/nemotron-3.5-lightning:free`, with reasoning off and the schema repeated in the
+   prompt (this model does not support `response_format`).
+4. NVIDIA NIM `nvidia/nemotron-3.5-lightning-30b-a3b` on a free build.nvidia.com key, with thinking off
+   (`chat_template_kwargs.enable_thinking: false`).
+5. **Built-in rules**, so the app never breaks and the fallback is labelled "Built-in suggestion".
 
 Cost safety is enforced in code (`server/config.ts`). Only Gemini Flash, Flash-Lite and Gemma ids, and
-OpenRouter ids ending in `:free`, are accepted; anything else is dropped at startup and covered by tests.
-Other protections: per-attempt timeouts, an overall 50 s deadline, a circuit breaker after 429/5xx, an
+OpenRouter ids ending in `:free`, are accepted (NVIDIA ids must be plain catalog ids, used with a free
+Developer Program key); anything else is dropped at startup and covered by tests.
+Other protections: per-attempt timeouts (12 s for Gemini, 22 s for free endpoints), an overall 50 s
+deadline, a circuit breaker after 429/5xx, an
 LRU cache and per-IP rate limits, all to protect the free quotas.
 
 **Google services used:** Gemini API (`@google/genai`), Google Calendar (per-task "add to Google Calendar"
@@ -152,7 +156,10 @@ npm run test:e2e     # Playwright (run `npx playwright install chromium` once,
    - `OPENROUTER_API_KEY` (optional fallback, or the only provider). Keep the OpenRouter balance at $0.
      In OpenRouter's [privacy settings](https://openrouter.ai/settings/privacy), allow the free endpoints;
      otherwise every free model answers "No endpoints found matching your data policy".
-   - Optional: `GEMINI_MODELS` and `OPENROUTER_MODELS` (comma-separated, free-tier ids only).
+   - `NVIDIA_API_KEY` (optional fallback after OpenRouter): a free NVIDIA Developer Program key from
+     [build.nvidia.com](https://build.nvidia.com/). Use only models marked "Free Endpoint".
+   - Optional: `GEMINI_MODELS`, `OPENROUTER_MODELS` and `NVIDIA_MODELS` (comma-separated, free-tier ids
+     only), and `OPENROUTER_REASONING=low` if you pick an OpenRouter model that requires reasoning.
 4. **Redeploy** after changing environment variables. Then open `/api/health`, which reports which
    providers are configured (as booleans only).
 
@@ -161,14 +168,18 @@ npm run test:e2e     # Playwright (run `npx playwright install chromium` once,
 This message means every configured model failed, so Lehar used its built-in rules. Open the Vercel
 project → **Logs**, filter for `provider_failed`, and read the `outcome` field:
 
-| `outcome`                                            | Fix                                                                                     |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `OpenRouter 404: privacy settings block free models` | Allow free endpoints in OpenRouter's privacy settings                                   |
-| `OpenRouter 401: invalid OPENROUTER_API_KEY`         | Re-copy the key into Vercel, then redeploy                                              |
-| `OpenRouter 429: free-model rate limit`              | Free models allow only a few dozen requests a day on a $0 account; add `GEMINI_API_KEY` |
-| `Provider timed out`                                 | The free endpoint was busy; try again, or add `GEMINI_API_KEY`                          |
-| `OpenRouter ran out of tokens before answering`      | Pick a non-reasoning free model in `OPENROUTER_MODELS`                                  |
-| `Model output failed schema validation`              | The model ignored the schema; try another free model in `OPENROUTER_MODELS`             |
+| `outcome`                                                             | Fix                                                                                                        |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `Provider timed out`                                                  | The free endpoint was slow or busy; try again, add `NVIDIA_API_KEY` as a fallback, or add `GEMINI_API_KEY` |
+| `OpenRouter 404: privacy settings block free models`                  | Allow free endpoints in OpenRouter's privacy settings                                                      |
+| `OpenRouter 401: invalid OPENROUTER_API_KEY`                          | Re-copy the key into Vercel, then redeploy                                                                 |
+| `OpenRouter 429: free-model rate limit`                               | Free models allow only a few dozen requests a day on a $0 account; add another provider                    |
+| `OpenRouter 400: model needs reasoning, set OPENROUTER_REASONING=low` | Set that variable, or pick a model whose reasoning can be switched off                                     |
+| `NVIDIA 401: invalid NVIDIA_API_KEY`                                  | Re-copy the `nvapi-…` key into Vercel, then redeploy                                                       |
+| `NVIDIA 404: model not found, check NVIDIA_MODELS`                    | Use an id exactly as shown on build.nvidia.com                                                             |
+| `NVIDIA 429: free endpoint rate limit`                                | Wait a minute; free endpoints are rate limited per key                                                     |
+| `… ran out of tokens before answering`                                | The model reasoned too long; keep reasoning off or choose a non-reasoning model                            |
+| `Model output failed schema validation`                               | The model ignored the schema; try another free model                                                       |
 
 Logs contain only operational fields (provider, status, duration, outcome), never what people typed.
 

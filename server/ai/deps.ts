@@ -12,6 +12,7 @@ import { RateLimiter } from '../security/rateLimit.js';
 import { CircuitBreaker } from './chain.js';
 import type { HandlerDeps } from './handler.js';
 import { createGeminiProvider } from './providers/gemini.js';
+import { createNvidiaProvider } from './providers/nvidia.js';
 import { createOpenRouterProvider } from './providers/openrouter.js';
 import type { AiProvider } from './providers/types.js';
 
@@ -31,7 +32,20 @@ export function buildProviders(
         createOpenRouterProvider({
           apiKey: openRouterKey,
           model,
-          timeoutMs: config.timeouts.openRouterMs,
+          reasoning: config.openRouter.reasoning,
+          timeoutMs: config.timeouts.freeEndpointMs,
+          fetchImpl,
+        }),
+      );
+  }
+  const nvidiaKey = config.nvidia.apiKey;
+  if (nvidiaKey) {
+    for (const model of config.nvidia.models)
+      providers.push(
+        createNvidiaProvider({
+          apiKey: nvidiaKey,
+          model,
+          timeoutMs: config.timeouts.freeEndpointMs,
           fetchImpl,
         }),
       );

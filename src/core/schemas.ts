@@ -7,6 +7,7 @@ import * as z from 'zod/mini';
 import {
   ACCESS_NEEDS,
   AGE_GROUPS,
+  AI_SOURCES,
   CATEGORIES,
   DIETS,
   EVENT_TYPES,
@@ -89,7 +90,7 @@ export const IdeaSchema = z.strictObject({
 });
 export type Idea = z.infer<typeof IdeaSchema>;
 
-export const AiSourceSchema = z.enum(['gemini', 'openrouter', 'rules']);
+export const AiSourceSchema = z.enum(AI_SOURCES);
 
 export const IdeaSetSchema = z.strictObject({
   items: z.array(IdeaSchema).check(z.minLength(1), z.maxLength(3)),

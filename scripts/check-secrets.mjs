@@ -10,9 +10,10 @@ const PATTERNS = [
   { name: 'Google API key', re: /AIza[0-9A-Za-z_-]{35}/ },
   { name: 'Google OAuth token', re: /ya29\.[0-9A-Za-z_-]{20,}/ },
   { name: 'OpenRouter key', re: /sk-or-(?:v1-)?[0-9a-f]{40,}/i },
+  { name: 'NVIDIA API key', re: /nvapi-[A-Za-z0-9_-]{40,}/ },
   { name: 'OpenAI-style key', re: /\bsk-[A-Za-z0-9]{32,}\b/ },
   { name: 'Private key block', re: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/ },
-  { name: 'Assigned secret in env file', re: /^(?:GEMINI|OPENROUTER)_API_KEY=\S+/m },
+  { name: 'Assigned secret in env file', re: /^(?:GEMINI|OPENROUTER|NVIDIA)_API_KEY=\S+/m },
 ];
 
 function trackedFiles() {

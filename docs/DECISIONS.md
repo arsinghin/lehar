@@ -18,10 +18,13 @@ cost, and keep working when free quotas run out. Vague inputs get a clarifying q
 
 ### ADR-3: Free-tier providers with an enforced allowlist
 
-**Decision.** Gemini 3.8 Flash → Gemini 3.1 Flash-Lite → OpenRouter `:free` → rules. Non-free ids are
-rejected in code.
+**Decision.** Gemini 3.8 Flash → Gemini 3.1 Flash-Lite → OpenRouter `nvidia/nemotron-3.5-lightning:free`
+→ NVIDIA NIM `nvidia/nemotron-3.5-lightning-30b-a3b` → rules. Non-free ids are rejected in code. The two
+free endpoints share one OpenAI-compatible client (`server/ai/providers/openaiCompatible.ts`), run with
+reasoning off and get 22 s each, so both fit inside the 50 s deadline.
 **Why.** The owner requires zero cost risk. Flash with LOW thinking balances accuracy and latency,
-Flash-Lite is the fastest fallback on the same key, and rules guarantee availability.
+Flash-Lite is the fastest fallback on the same key, Nemotron 3.5 Lightning is a fast free model reachable
+through two independent providers, and rules guarantee availability.
 
 ### ADR-4: React + Vite SPA with Vercel Functions, no framework server
 

@@ -77,6 +77,12 @@ export function BudgetStatusBadge({ status }: { status: BudgetStatus }) {
   );
 }
 
+const SOURCE_NAMES = {
+  gemini: 'Google Gemini',
+  openrouter: 'OpenRouter',
+  nvidia: 'NVIDIA NIM',
+} as const satisfies Record<Exclude<AiSource, 'rules'>, string>;
+
 /** Says where a suggestion came from, so AI output is never mistaken for verified facts. */
 export function SourceBadge({ source }: { source: AiSource }) {
   if (source === 'rules') {
@@ -88,7 +94,7 @@ export function SourceBadge({ source }: { source: AiSource }) {
   }
   return (
     <Badge tone="info" icon="sparkle">
-      {source === 'gemini' ? 'AI suggestion · Google Gemini' : 'AI suggestion · OpenRouter'}
+      AI suggestion · {SOURCE_NAMES[source]}
     </Badge>
   );
 }

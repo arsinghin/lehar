@@ -9,11 +9,16 @@ import { CircuitBreaker, runProviderChain } from './chain';
 import { buildProviders, getDefaultDeps } from './deps';
 import { handleAiRequest, type HandlerDeps } from './handler';
 import { createGeminiProvider } from './providers/gemini';
+import { createNvidiaProvider, describeNvidiaError, NVIDIA_ENDPOINT } from './providers/nvidia';
+import {
+  errorMessageOf,
+  REASONING_HEADROOM_TOKENS,
+  stripThinking,
+} from './providers/openaiCompatible';
 import {
   createOpenRouterProvider,
   describeOpenRouterError,
   OPENROUTER_ENDPOINT,
-  REASONING_HEADROOM_TOKENS,
 } from './providers/openrouter';
 import { ProviderError, toProviderError, type AiProvider } from './providers/types';
 import { ideasPrompt, parseChangePrompt, SYSTEM_PROMPT, vendorQuestionsPrompt } from './prompts';
@@ -430,44 +435,63 @@ describe('providers', () => {
     );
   });
 
-  it('OpenRouter posts an OpenAI-compatible body with the bearer key', async () => {
-    const fetchImpl = vi.fn((_url: string | URL | Request, _init?: RequestInit) =>
-      Promise.resolve(
-        new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":true}' } }] }), {
-          status: 200,
-        }),
-      ),
+  const providerInput = (overrides = {}) => ({
+    system: 's',
+    prompt: 'p',
+    jsonSchema: { type: 'object' },
+    maxOutputTokens: 50,
+    signal: new AbortController().signal,
+    ...overrides,
+  });
+  const okFetch = (content: unknown = '{"ok":true}') =>
+    vi.fn((_url: string | URL | Request, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content } }] }))),
     );
+  const sentBody = (fetchImpl: ReturnType<typeof okFetch>) =>
+    JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body as string) as Record<string, unknown> & {
+      messages: { role: string; content: string }[];
+    };
+
+  it('OpenRouter posts an OpenAI-compatible body with reasoning off by default', async () => {
+    const fetchImpl = okFetch();
     const provider = createOpenRouterProvider({
       apiKey: 'or-key',
-      model: 'openai/gpt-oss-120b:free',
+      model: 'nvidia/nemotron-3.5-lightning:free',
       fetchImpl,
     });
-    const text = await provider.generate({
-      system: 's',
-      prompt: 'p',
-      jsonSchema: { type: 'object' },
-      maxOutputTokens: 50,
-      signal: new AbortController().signal,
-    });
-    expect(text).toBe('{"ok":true}');
+    expect(await provider.generate(providerInput())).toBe('{"ok":true}');
     const [url, init] = fetchImpl.mock.calls[0] ?? [];
     expect(url).toBe(OPENROUTER_ENDPOINT);
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer or-key');
-    const body = JSON.parse(init?.body as string) as {
-      messages: { role: string; content: string }[];
-    };
+    const body = sentBody(fetchImpl);
     expect(body).toMatchObject({
-      model: 'openai/gpt-oss-120b:free',
+      model: 'nvidia/nemotron-3.5-lightning:free',
       max_tokens: 50 + REASONING_HEADROOM_TOKENS,
       response_format: { type: 'json_schema' },
-      reasoning: { effort: 'low', exclude: true },
+      reasoning: { enabled: false },
     });
-    // The schema is repeated in the prompt for free endpoints that ignore response_format.
+    // The schema is repeated in the prompt for models that ignore response_format.
     expect(body.messages[0]?.content).toContain('{"type":"object"}');
   });
 
-  it('OpenRouter explains common failures without logging their content', async () => {
+  it('OpenRouter sends a low reasoning effort for models that require reasoning', async () => {
+    const fetchImpl = okFetch();
+    const provider = createOpenRouterProvider({
+      apiKey: 'k',
+      model: 'openai/gpt-oss-120b:free',
+      reasoning: 'low',
+      timeoutMs: 22_000,
+      fetchImpl,
+    });
+    await provider.generate(providerInput());
+    expect(sentBody(fetchImpl).reasoning).toEqual({ effort: 'low', exclude: true });
+    expect(provider.timeoutMs).toBe(22_000);
+  });
+
+  it('OpenRouter explains common failures without logging their content', () => {
+    expect(describeOpenRouterError(400, { error: { message: 'Reasoning is mandatory' } })).toMatch(
+      /OPENROUTER_REASONING=low/,
+    );
     expect(describeOpenRouterError(401, null)).toMatch(/OPENROUTER_API_KEY/);
     expect(describeOpenRouterError(402, null)).toMatch(/:free/);
     expect(
@@ -478,59 +502,89 @@ describe('providers', () => {
     expect(describeOpenRouterError(404, { error: {} })).toMatch(/not found/);
     expect(describeOpenRouterError(429, 'not json')).toMatch(/rate limit/);
     expect(describeOpenRouterError(503, null)).toBe('OpenRouter HTTP 503');
+  });
 
-    const input = {
-      system: 's',
-      prompt: 'p',
-      jsonSchema: {},
-      maxOutputTokens: 1,
-      signal: new AbortController().signal,
-    };
-    const respond = (body: string, status = 200) =>
+  it('NVIDIA NIM posts to the catalog endpoint with thinking off and the schema in the prompt', async () => {
+    const fetchImpl = okFetch('<think>planning</think>{"ok":true}');
+    const provider = createNvidiaProvider({
+      apiKey: 'nv-key',
+      model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      timeoutMs: 22_000,
+      fetchImpl,
+    });
+    expect(provider).toMatchObject({
+      id: 'nvidia:nvidia/nemotron-3.5-lightning-30b-a3b',
+      source: 'nvidia',
+    });
+    expect(await provider.generate(providerInput())).toBe('{"ok":true}');
+    const [url, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(url).toBe(NVIDIA_ENDPOINT);
+    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer nv-key');
+    const body = sentBody(fetchImpl);
+    expect(body).toMatchObject({
+      model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      chat_template_kwargs: { enable_thinking: false },
+      max_tokens: 50 + REASONING_HEADROOM_TOKENS,
+      stream: false,
+    });
+    expect(body).not.toHaveProperty('response_format');
+    expect(body.messages[0]?.content).toContain('{"type":"object"}');
+  });
+
+  it('NVIDIA NIM explains common failures', async () => {
+    expect(describeNvidiaError(401, null)).toMatch(/NVIDIA_API_KEY/);
+    expect(describeNvidiaError(403, null)).toMatch(/NVIDIA_API_KEY/);
+    expect(describeNvidiaError(402, null)).toMatch(/credits/);
+    expect(describeNvidiaError(404, null)).toMatch(/NVIDIA_MODELS/);
+    expect(describeNvidiaError(429, null)).toMatch(/rate limit/);
+    expect(describeNvidiaError(400, { error: 'unknown chat_template_kwargs' })).toMatch(/thinking/);
+    expect(describeNvidiaError(500, null)).toBe('NVIDIA HTTP 500');
+    const failing = createNvidiaProvider({
+      apiKey: 'k',
+      model: 'nvidia/x',
+      fetchImpl: () => Promise.resolve(new Response('{}', { status: 429 })),
+    });
+    await expect(failing.generate(providerInput())).rejects.toMatchObject({
+      status: 429,
+      isTransient: true,
+    });
+  });
+
+  it('the shared client maps upstream errors, empty and truncated answers, and timeouts', async () => {
+    const respond = (body: string | (() => Promise<unknown>), status = 200) =>
       createOpenRouterProvider({
         apiKey: 'k',
         model: 'm:free',
-        fetchImpl: () => Promise.resolve(new Response(body, { status })),
-      });
+        fetchImpl: () =>
+          Promise.resolve(
+            typeof body === 'string'
+              ? new Response(body, { status })
+              : ({ ok: true, status, json: body } as unknown as Response),
+          ),
+      }).generate(providerInput());
     await expect(
-      respond(JSON.stringify({ error: { message: 'No endpoints… data policy' } }), 404).generate(
-        input,
-      ),
+      respond(JSON.stringify({ error: { message: 'No endpoints… data policy' } }), 404),
     ).rejects.toMatchObject({ status: 404, message: expect.stringMatching(/privacy/) as string });
     await expect(
-      respond(JSON.stringify({ error: { message: 'upstream down' } })).generate(input),
+      respond(JSON.stringify({ error: { message: 'upstream down' } })),
     ).rejects.toMatchObject({ status: 502, isTransient: true });
     await expect(
-      respond(
-        JSON.stringify({ choices: [{ message: { content: '' }, finish_reason: 'length' }] }),
-      ).generate(input),
+      respond(JSON.stringify({ choices: [{ message: { content: '' }, finish_reason: 'length' }] })),
     ).rejects.toThrow(/ran out of tokens/);
-    await expect(respond('<html>').generate(input)).rejects.toThrow(/Empty/);
+    await expect(
+      respond(JSON.stringify({ choices: [{ message: { content: null } }] })),
+    ).rejects.toThrow(/Empty/);
+    await expect(respond('<html>')).rejects.toThrow(/Empty/);
+    // The deadline can fire while the body is still arriving: that is a timeout, not an empty answer.
+    await expect(
+      respond(() => Promise.reject(new DOMException('The operation timed out.', 'TimeoutError'))),
+    ).rejects.toMatchObject({ status: 408, message: 'Provider timed out' });
   });
 
-  it('OpenRouter maps HTTP errors and empty content', async () => {
-    const input = {
-      system: 's',
-      prompt: 'p',
-      jsonSchema: {},
-      maxOutputTokens: 1,
-      signal: new AbortController().signal,
-    };
-    const failing = createOpenRouterProvider({
-      apiKey: 'k',
-      model: 'm:free',
-      fetchImpl: () => Promise.resolve(new Response('', { status: 429 })),
-    });
-    await expect(failing.generate(input)).rejects.toMatchObject({ status: 429 });
-    const empty = createOpenRouterProvider({
-      apiKey: 'k',
-      model: 'm:free',
-      fetchImpl: () =>
-        Promise.resolve(
-          new Response(JSON.stringify({ choices: [{ message: { content: null } }] })),
-        ),
-    });
-    await expect(empty.generate(input)).rejects.toThrow(/Empty/);
+  it('strips inline thinking and accepts plain-string error bodies', () => {
+    expect(stripThinking('<think>a\nb</think>\n{"x":1}')).toBe('{"x":1}');
+    expect(errorMessageOf({ error: 'plain' })).toBe('plain');
+    expect(errorMessageOf(null)).toBe('');
   });
 
   it('classifies errors', () => {
@@ -544,22 +598,26 @@ describe('providers', () => {
 describe('wiring', () => {
   it('builds providers only for configured keys, in priority order', () => {
     expect(buildProviders(loadConfig({}))).toEqual([]);
-    const ids = buildProviders(loadConfig({ GEMINI_API_KEY: 'g', OPENROUTER_API_KEY: 'o' })).map(
-      (p) => p.id,
+    const providers = buildProviders(
+      loadConfig({ GEMINI_API_KEY: 'g', OPENROUTER_API_KEY: 'o', NVIDIA_API_KEY: 'n' }),
     );
-    expect(ids).toEqual([
+    expect(providers.map((p) => p.id)).toEqual([
       'gemini:gemini-3.8-flash',
       'gemini:gemini-3.1-flash-lite',
-      'openrouter:openai/gpt-oss-120b:free',
-      'openrouter:openrouter/free',
+      'openrouter:nvidia/nemotron-3.5-lightning:free',
+      'nvidia:nvidia/nemotron-3.5-lightning-30b-a3b',
     ]);
+    // Free endpoints get the longer timeout; two of them still fit inside the overall deadline.
+    expect(providers.map((p) => p.timeoutMs)).toEqual([undefined, undefined, 22_000, 22_000]);
+    const config = loadConfig({});
+    expect(2 * config.timeouts.freeEndpointMs).toBeLessThan(config.timeouts.totalMs);
+    expect(config.timeouts.totalMs).toBeLessThan(60_000);
   });
 
-  it('gives OpenRouter models the longer free-endpoint timeout', () => {
-    const config = loadConfig({ GEMINI_API_KEY: 'g', OPENROUTER_API_KEY: 'o' });
-    const timeouts = buildProviders(config).map((p) => p.timeoutMs);
-    expect(timeouts).toEqual([undefined, undefined, 30_000, 30_000]);
-    expect(config.timeouts.totalMs).toBeLessThan(60_000);
+  it('works with only an NVIDIA key', () => {
+    expect(buildProviders(loadConfig({ NVIDIA_API_KEY: 'n' })).map((p) => p.source)).toEqual([
+      'nvidia',
+    ]);
   });
 
   it('memoises default deps across invocations', () => {

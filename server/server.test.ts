@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import aiRoute from '../api/ai';
 import healthRoute from '../api/health';
 import { cacheKey, stableStringify, TtlCache } from './cache';
-import { isAllowedGeminiModel, isFreeOpenRouterModel, loadConfig } from './config';
+import {
+  isAllowedGeminiModel,
+  isAllowedNvidiaModel,
+  isFreeOpenRouterModel,
+  loadConfig,
+} from './config';
 import { healthBody } from './health';
 import { createLogger } from './log';
 import { looksLikePromptInjection } from './security/injection';
@@ -18,8 +23,37 @@ describe('config: cost safety', () => {
       apiKey: null,
       models: ['gemini-3.8-flash', 'gemini-3.1-flash-lite'],
     });
-    expect(config.openRouter.models).toEqual(['openai/gpt-oss-120b:free', 'openrouter/free']);
+    expect(config.openRouter).toEqual({
+      apiKey: null,
+      models: ['nvidia/nemotron-3.5-lightning:free'],
+      reasoning: 'off',
+    });
+    expect(config.nvidia).toEqual({
+      apiKey: null,
+      models: ['nvidia/nemotron-3.5-lightning-30b-a3b'],
+    });
     expect(config.rejectedModels).toEqual([]);
+  });
+
+  it('reads the NVIDIA key and models, and the OpenRouter reasoning switch', () => {
+    const config = loadConfig({
+      NVIDIA_API_KEY: ' nv ',
+      NVIDIA_MODELS: 'nvidia/nemotron-3-ultra-550b-a55b, not a model, https://evil.example/x',
+      OPENROUTER_REASONING: ' LOW ',
+    });
+    expect(config.nvidia).toEqual({ apiKey: 'nv', models: ['nvidia/nemotron-3-ultra-550b-a55b'] });
+    expect(config.openRouter.reasoning).toBe('low');
+    expect(config.rejectedModels).toEqual(['not a model', 'https://evil.example/x']);
+    expect(loadConfig({ OPENROUTER_REASONING: 'high' }).openRouter.reasoning).toBe('off');
+  });
+
+  it.each([
+    ['nvidia/nemotron-3.5-lightning-30b-a3b', true],
+    ['openai/gpt-oss-20b', true],
+    ['nemotron', false],
+    ['a/b/c', false],
+  ])('isAllowedNvidiaModel(%s) = %s', (id, allowed) => {
+    expect(isAllowedNvidiaModel(id)).toBe(allowed);
   });
 
   it('drops any model that is not on a free tier', () => {
@@ -236,7 +270,10 @@ describe('logger and health', () => {
 
   it('reports configuration as booleans only', () => {
     const body = healthBody(loadConfig({ GEMINI_API_KEY: 'secret-value' }));
-    expect(body.ai).toEqual({ gemini: true, openRouter: false, fallback: 'rules' });
+    expect(body.ai).toEqual({ gemini: true, openRouter: false, nvidia: false, fallback: 'rules' });
+    expect(healthBody(loadConfig({ NVIDIA_API_KEY: 'n' })).models.nvidia).toEqual([
+      'nvidia/nemotron-3.5-lightning-30b-a3b',
+    ]);
     expect(JSON.stringify(body)).not.toContain('secret-value');
   });
 });

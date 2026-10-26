@@ -39,7 +39,7 @@ export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 export const COST_LEVELS = ['lower', 'similar', 'higher'] as const;
 export type CostLevel = (typeof COST_LEVELS)[number];
 
-export const AI_SOURCES = ['gemini', 'openrouter', 'rules'] as const;
+export const AI_SOURCES = ['gemini', 'openrouter', 'nvidia', 'rules'] as const;
 export type AiSource = (typeof AI_SOURCES)[number];
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {

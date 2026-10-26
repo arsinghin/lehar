@@ -1,50 +1,35 @@
 /**
- * OpenRouter fallback (OpenAI-compatible chat completions), restricted to free models by config.
- * It is called with plain fetch, so there is no extra dependency.
+ * OpenRouter fallback, restricted to free models by config.
  *
- * Free models need three adjustments that Gemini does not:
- * - Many are reasoning models (e.g. gpt-oss), and reasoning tokens count against max_tokens. Reasoning
- *   is set to low effort and extra headroom is added, or the model can run out before it answers.
- * - Some free endpoints ignore response_format, so the JSON Schema is also given in the prompt.
- * - Free endpoints are slower, so this provider gets a longer per-attempt timeout (see config).
+ * The default is nvidia/nemotron-3.5-lightning:free with reasoning off: the tasks are short JSON
+ * answers, so thinking only adds latency. Models that require reasoning (e.g. gpt-oss) need
+ * OPENROUTER_REASONING=low, which sends a low effort instead.
  */
-import * as z from 'zod/mini';
-
-import { ProviderError, toProviderError, type AiProvider, type GenerateInput } from './types.js';
+import type { OpenRouterReasoning } from '../../config.js';
+import {
+  errorMessageOf,
+  postChatCompletion,
+  REASONING_HEADROOM_TOKENS,
+  systemWithSchema,
+} from './openaiCompatible.js';
+import type { AiProvider, GenerateInput } from './types.js';
 
 export const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
-
-/** Extra tokens for the model's reasoning, on top of the answer budget. Free models cost nothing. */
-export const REASONING_HEADROOM_TOKENS = 1_500;
-
-const CompletionSchema = z.object({
-  choices: z
-    .array(
-      z.object({
-        message: z.object({ content: z.nullable(z.optional(z.string())) }),
-        finish_reason: z.nullable(z.optional(z.string())),
-      }),
-    )
-    .check(z.minLength(1)),
-});
-
-const ErrorBodySchema = z.object({
-  error: z.object({ message: z.optional(z.string()) }),
-});
 
 export interface OpenRouterOptions {
   apiKey: string;
   model: string;
+  reasoning?: OpenRouterReasoning;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }
 
-/**
- * A short, content-free reason for logs, so a failed deploy can be diagnosed from the Vercel logs.
- * OpenRouter's own message is only inspected, never logged, because it can echo request details.
- */
+/** A short, content-free reason for logs, so a failed deploy can be diagnosed from the Vercel logs. */
 export function describeOpenRouterError(status: number, body: unknown): string {
-  const message = ErrorBodySchema.safeParse(body).data?.error.message ?? '';
+  const message = errorMessageOf(body);
+  if (status === 400 && /reasoning/i.test(message)) {
+    return 'OpenRouter 400: model needs reasoning, set OPENROUTER_REASONING=low';
+  }
   if (status === 401) return 'OpenRouter 401: invalid OPENROUTER_API_KEY';
   if (status === 402) return 'OpenRouter 402: needs credits, use :free models only';
   if (status === 404 && /data policy|privacy/i.test(message)) {
@@ -55,17 +40,10 @@ export function describeOpenRouterError(status: number, body: unknown): string {
   return `OpenRouter HTTP ${String(status)}`;
 }
 
-async function readJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
 export function createOpenRouterProvider({
   apiKey,
   model,
+  reasoning = 'off',
   timeoutMs,
   fetchImpl = fetch,
 }: OpenRouterOptions): AiProvider {
@@ -74,62 +52,30 @@ export function createOpenRouterProvider({
     source: 'openrouter',
     model,
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-    async generate({
-      system,
-      prompt,
-      jsonSchema,
-      maxOutputTokens,
-      signal,
-    }: GenerateInput): Promise<string> {
-      try {
-        const response = await fetchImpl(OPENROUTER_ENDPOINT, {
-          method: 'POST',
-          signal,
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'X-Title': 'Lehar',
+    generate: ({ system, prompt, jsonSchema, maxOutputTokens, signal }: GenerateInput) =>
+      postChatCompletion({
+        endpoint: OPENROUTER_ENDPOINT,
+        apiKey,
+        label: 'OpenRouter',
+        headers: { 'X-Title': 'Lehar' },
+        signal,
+        fetchImpl,
+        describeError: describeOpenRouterError,
+        body: {
+          model,
+          messages: [
+            { role: 'system', content: systemWithSchema(system, jsonSchema) },
+            { role: 'user', content: prompt },
+          ],
+          // Used by models that support it; OpenRouter drops it for models that do not.
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: 'lehar_response', strict: false, schema: jsonSchema },
           },
-          body: JSON.stringify({
-            model,
-            messages: [
-              {
-                role: 'system',
-                content: `${system}\nThe JSON must match this JSON Schema:\n${JSON.stringify(jsonSchema)}`,
-              },
-              { role: 'user', content: prompt },
-            ],
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: 'lehar_response', strict: false, schema: jsonSchema },
-            },
-            reasoning: { effort: 'low', exclude: true },
-            max_tokens: maxOutputTokens + REASONING_HEADROOM_TOKENS,
-            temperature: 0.4,
-          }),
-        });
-        const body = await readJson(response);
-        if (!response.ok) {
-          throw new ProviderError(describeOpenRouterError(response.status, body), response.status);
-        }
-        // OpenRouter can answer 200 with an error object when the upstream provider fails.
-        if (ErrorBodySchema.safeParse(body).success) {
-          throw new ProviderError('OpenRouter upstream error', 502);
-        }
-        const parsed = CompletionSchema.safeParse(body);
-        const choice = parsed.success ? parsed.data.choices[0] : undefined;
-        const content = choice?.message.content?.trim();
-        if (!content) {
-          throw new ProviderError(
-            choice?.finish_reason === 'length'
-              ? 'OpenRouter ran out of tokens before answering'
-              : 'Empty response from OpenRouter',
-          );
-        }
-        return content;
-      } catch (error) {
-        throw toProviderError(error);
-      }
-    },
+          reasoning: reasoning === 'off' ? { enabled: false } : { effort: 'low', exclude: true },
+          max_tokens: maxOutputTokens + REASONING_HEADROOM_TOKENS,
+          temperature: 0.4,
+        },
+      }),
   };
 }

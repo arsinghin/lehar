@@ -23,17 +23,19 @@ contacts, URLs or availability · respect every constraint without assuming · a
 
 ## Provider-specific handling
 
-| Provider               | Handling                                                                                                                                                        | Why                                                                                                                                                 |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Gemini                 | `responseJsonSchema` and `thinkingLevel: LOW`                                                                                                                   | Native structured output; low thinking keeps latency down                                                                                           |
-| OpenRouter free models | `response_format: json_schema` **and** the schema repeated in the system prompt; `reasoning: { effort: "low" }` plus 1,500 tokens of headroom; 30 s per attempt | Some free endpoints ignore `response_format`; reasoning models such as gpt-oss spend `max_tokens` on reasoning first, and free endpoints are slower |
+| Provider                                             | Handling                                                                                                                                                                                                         | Why                                                                                    |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Gemini                                               | `responseJsonSchema` and `thinkingLevel: LOW`                                                                                                                                                                    | Native structured output; low thinking keeps latency down                              |
+| OpenRouter (`nvidia/nemotron-3.5-lightning:free`)    | Schema repeated in the system prompt (the model ignores `response_format`); `reasoning: { enabled: false }` (or `{ effort: "low" }` with `OPENROUTER_REASONING=low`); 1,500 tokens of headroom; 22 s per attempt | Short JSON answers need no reasoning, and reasoning tokens count against `max_tokens`  |
+| NVIDIA NIM (`nvidia/nemotron-3.5-lightning-30b-a3b`) | Schema in the system prompt; `chat_template_kwargs: { enable_thinking: false }`; inline `<think>` blocks stripped; 22 s per attempt                                                                              | Thinking off keeps latency low; the fallback must answer within the remaining deadline |
 
 ## Changelog
 
-| Version                                         | Date       | What changed                                                                                       |
-| ----------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------- |
-| `ideas@1`, `parseChange@1`, `vendorQuestions@1` | 2026-10-26 | First release                                                                                      |
-| (OpenRouter request)                            | 2026-10-26 | Schema in the prompt, low reasoning effort with token headroom, longer timeout (prompts unchanged) |
+| Version                                         | Date       | What changed                                                                                                                        |
+| ----------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ideas@1`, `parseChange@1`, `vendorQuestions@1` | 2026-10-26 | First release                                                                                                                       |
+| (OpenRouter request)                            | 2026-10-26 | Schema in the prompt, low reasoning effort with token headroom, longer timeout (prompts unchanged)                                  |
+| (Providers)                                     | 2026-10-26 | OpenRouter default switched to Nemotron 3.5 Lightning with reasoning off; NVIDIA NIM added as the next fallback (prompts unchanged) |
 
 ## How Lehar was built
 
