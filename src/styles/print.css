@@ -1,0 +1,44 @@
+@media print {
+  :root {
+    --bg: #ffffff;
+    --text: #000000;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 11pt;
+  }
+
+  .site-header,
+  .site-footer,
+  .skip-link,
+  .notice-region,
+  .workspace > :not(.print-only),
+  .dialog {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-only table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .print-only td {
+    border-bottom: 1px solid #999;
+    padding: 4pt 6pt;
+  }
+
+  .print-only h2 {
+    margin-top: 14pt;
+    break-after: avoid;
+  }
+
+  .print-only li {
+    break-inside: avoid;
+  }
+}
