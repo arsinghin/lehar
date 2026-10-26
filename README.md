@@ -1,64 +1,138 @@
-# Lehar: plan the celebration, handle the ripples
+<div align="center">
 
-**An open-source GenAI planning assistant for weddings, birthdays and community events in India.** It
-gives you a budget that adds up to the rupee, a timeline in the right order, vendor checklists and ideas
-that fit your guests. When something changes, Lehar shows how it ripples through everything, and **you**
-decide.
+<img src="public/favicon.svg" alt="" width="72" height="72" />
 
-_Lehar (लहर) is Hindi for "wave" or "ripple": one change in a plan sends a wave through the budget,
-timeline and vendors._
+# Lehar
+
+**Plan the celebration. Handle the ripples.**
+
+An open-source, AI-assisted planner for weddings, birthdays and community events in India. It gives
+you budgets that add up to the rupee, dependency-aware timelines, vendor checklists and personalised
+ideas, and when plans change it shows every ripple before anything is applied.
 
 [![CI](https://github.com/arsinghin/lehar/actions/workflows/ci.yml/badge.svg)](https://github.com/arsinghin/lehar/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+![Node 22](https://img.shields.io/badge/node-22.x-339933?logo=node.js&logoColor=white)
+![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![WCAG 2.2 AA](https://img.shields.io/badge/accessibility-WCAG%202.2%20AA-6f42c1)
 
-Live app: `https://lehar-psi.vercel.app` · Made by **AR Singh**
-([@arsinghin](https://github.com/arsinghin))
+<sub><i>Lehar (लहर) is Hindi for "wave" or "ripple": one change in a plan sends a wave through the
+budget, timeline and vendors.</i></sub>
+
+</div>
 
 ---
 
-## 1. Who it is for
+## Contents
 
-**A first-time family host in India.** This is someone organising one important celebration with a fixed
-rupee budget, a date that matters, a lot of advice from relatives, and no planning system. Three event
-types are supported: **weddings, milestone and kids' birthdays, and community or society events** (with
-volunteers, permissions and safety).
+- [Overview](#overview)
+- [Features](#features)
+- [Quick tour](#quick-tour)
+- [Architecture](#architecture)
+- [AI integration](#ai-integration)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [Deployment](#deployment)
+- [Troubleshooting](#troubleshooting)
+- [Quality and engineering](#quality-and-engineering)
+- [Project structure](#project-structure)
+- [Assumptions and limitations](#assumptions-and-limitations)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License and attribution](#license-and-attribution)
 
-| Question                         | Answer                                                                                                                                                                                                                                  |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| What is the most stressful part? | **Connected decisions.** Guests, budget, venue and date all affect each other, so one change breaks the plan.                                                                                                                           |
-| How does GenAI make it better?   | It turns plain-language changes into structured plan edits, personalises ideas within real constraints, and drafts sharp vendor questions. **The AI suggests and the code decides**: every rupee and every date comes from tested code. |
+## Overview
 
-## 2. Try it in 60 seconds
+Planning a family celebration is a web of connected decisions: guests drive catering, catering drives
+budget, and the date drives every booking deadline. When one of them changes, the whole plan breaks,
+and most tools either ignore the change or rebuild everything from scratch.
 
-1. Open the app and choose **"A wedding, 4 months away"**: ₹8,00,000 and 200 guests.
-2. Click **Try a sample change**. It is pre-filled with _"We now have 50 more guests, our budget is down
-   by 10%, and the event is happening 2 weeks earlier."_
-3. **Preview the ripple.** You see the budget move from tight to over, the line-by-line deltas, the
-   timeline compressing, _both caterer quotes flagged for re-quoting at 250 guests_, and what is kept
-   (completed tasks and quotes). Nothing is rebuilt from scratch.
-4. **Apply.** Open **Budget**: the trade-off assistant ranks the options by what matters to this family.
-   Catering is protected, so it is never touched. Pick some options or **Select Lehar's suggestion**,
-   then apply.
-5. Change your mind? Use **Undo**, or restore any earlier version from **History**.
+Lehar is built for **first-time hosts** organising one important event with a fixed budget, a date that
+matters and no planning system. It follows one principle: **the AI suggests, the code decides.**
 
-Other demos: _Same wedding, 20% over budget_ · _A 6th birthday party_ · _A society Diwali mela_.
+- **Every number and date comes from deterministic, tested code.** Budgets, schedules, trade-offs and
+  quote comparisons are pure TypeScript functions that run in the browser and work offline.
+- **Generative AI handles language and personalisation only.** It turns free-text changes into
+  structured edits, tailors ideas to the guests, and drafts vendor questions. Its output is
+  schema-validated, sanitised and always labelled with its source.
+- **The host stays in control.** Every change is previewed as a diff, applied only on confirmation, and
+  can be undone or restored from version history.
 
-## 3. Features
+Supported events: **weddings**, **milestone and kids' birthdays**, and **community or society events**
+(with volunteers, permissions and safety tasks).
 
-| Need                                                                       | What Lehar does                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Start with practical questions: occasion, budget, guests, date, must-haves | A 5-step intake: occasion, date and city → guests, budget ("8 lakh" works) and style → priorities 1–5 with **Protect** toggles → ages, diets, accessibility, culture, must-haves → review with a first estimate.                                                                                                                                                                                                                          |
-| Budget by category, compare scenarios, **see consequences**                | A category budget built from documented assumptions, with guest-scaled and fixed lines. Every edit (style per category, guests, buffer, rates) shows a **ripple message**, e.g. "Decoration style → Premium: +₹69,300 on the total. Now ₹8,66,800 (over budget by ₹66,800)".                                                                                                                                                              |
-| Prices you can trust                                                       | Every line is labelled **Estimate (assumption)**, **Your rate** or **Quote · vendor**. The assumptions are visible and editable. The AI is forbidden from emitting money, and its output is sanitised of amounts.                                                                                                                                                                                                                         |
-| Timeline: priority, deadlines, **dependencies**, updates when tasks slip   | A task graph per event type (e.g. date → venue → caterer → menu), back-scheduled from your date. It compresses proportionally when time is short and gives a **Do next** list. **Delaying a task ripples to every dependent task** and says how many moved.                                                                                                                                                                               |
-| Over budget? Understand the trade-offs instead of cutting blindly          | The **trade-off assistant** lists concrete options (simpler package, skip a low-priority extra, trim guests, shrink the buffer). Each shows what it saves and which of _your_ priorities it touches, ranked by savings per unit of pain. Protected areas and a locked guest count are never touched, and nothing is pre-selected.                                                                                                         |
-| Vendors: define needs, ask the right questions, compare quotes             | A requirement sheet per vendor (plates with a 5% buffer, diets, accessibility, capacity). There is a question checklist, plus **AI questions tailored to your event**. Enter quotes and compare like for like: per guest, against your estimate, "covers 180 of 200 guests", "Clarify: GST", and the lowest _complete_ quote. A **Google Maps** search link is provided and clearly marked _unverified_. Lehar never claims availability. |
-| Personalised ideas, refined through conversation                           | Three concepts shaped by ages, diets, accessibility, culture, must-haves and how the budget feels. Refine with **Cheaper · Kid-friendly · Elder-friendly · More traditional · Eco-friendly**, or in your own words.                                                                                                                                                                                                                       |
-| Plans change (+50 guests, less budget, 2 weeks earlier)                    | **"Something changed?"** → parse → **diff preview** → apply or cancel → **undo and version history**. Completed tasks, quotes and ideas are kept.                                                                                                                                                                                                                                                                                         |
-| Ask, don't assume                                                          | Vague input gets a question back. For example, "our budget decreased a bit" → _"By how much did the budget change?"_.                                                                                                                                                                                                                                                                                                                     |
-| Stay in control                                                            | Nothing is auto-applied. Every AI output carries a source badge. "What Lehar sends to the AI" shows the exact payload. There is no marketplace, payments or login (see §10).                                                                                                                                                                                                                                                              |
+## Features
 
-## 4. How it works: "the AI suggests, the code decides"
+**Guided intake**
+
+- Five short steps: occasion, date and city → guests, budget ("8 lakh" works) and style → priorities
+  with **Protect** toggles → ages, diets, accessibility, culture, must-haves → review with a first estimate.
+
+**Budget you can trust**
+
+- Category budget from documented assumptions, with guest-scaled and fixed lines that always sum exactly.
+- Every line is labelled **Estimate (assumption)**, **Your rate** or **Quote · vendor**; every
+  assumption is visible and editable.
+- Each edit reports its ripple, e.g. _"Decoration style → Premium: +₹69,300 on the total. Now
+  ₹8,66,800 (over budget by ₹66,800)."_
+- What-if scenarios for a different guest count or budget, without touching the saved plan.
+
+**Trade-off assistant**
+
+- When over budget, lists concrete options (simpler package, skip a low-priority extra, trim guests,
+  shrink the buffer), each with its saving and the priorities it touches.
+- Options are ranked by saving per unit of impact. Protected categories and a locked guest count are
+  never touched, and nothing is pre-selected.
+
+**Dependency-aware timeline**
+
+- A task graph per event type (date → venue → caterer → menu …), back-scheduled from the event date.
+- Compresses proportionally when time is short, and highlights what to **do next**.
+- Delaying a task moves every dependent task and reports how many moved.
+- One-click **Google Calendar** links per task and a full `.ics` export.
+
+**Vendor coordination**
+
+- Requirement sheets per vendor (plates with a buffer, diets, accessibility, capacity) and a question
+  checklist, plus AI questions tailored to the event.
+- Like-for-like quote comparison: per guest, against the estimate, coverage ("180 of 200 guests"),
+  missing inclusions ("Clarify: GST") and the lowest complete quote.
+- **Google Maps** search links, clearly marked as unverified. Lehar never claims availability.
+
+**Change handling**
+
+- **"Something changed?"** accepts plain language: _"50 more guests, budget down 10%, two weeks earlier."_
+- Rules parse typical changes instantly with no AI call; vague input gets a clarifying question back.
+- A diff preview shows budget deltas, compressed deadlines, quotes that need re-quoting, and what is kept.
+- Undo, redo and version history for every committed change.
+
+**Personalised ideas**
+
+- Three concepts shaped by ages, diets, accessibility, culture, must-haves and how the budget feels.
+- Refine with **Cheaper · Kid-friendly · Elder-friendly · More traditional · Eco-friendly**, or in your
+  own words.
+
+**Privacy and portability**
+
+- Plans live in the browser (validated `localStorage`), with JSON export and import and a print view.
+- No account, no tracking. "What Lehar sends to the AI" shows the exact request payload.
+
+## Quick tour
+
+1. Open the app and choose the demo **"A wedding, 4 months away"** (₹8,00,000, 200 guests).
+2. Click **Try a sample change**: _"We now have 50 more guests, our budget is down by 10%, and the
+   event is happening 2 weeks earlier."_
+3. Review the preview: the budget moves from tight to over, deadlines compress, both caterer quotes are
+   flagged for re-quoting at 250 guests, and completed tasks and quotes are kept.
+4. Apply it, then open **Budget**. The trade-off assistant ranks the options while leaving the
+   protected catering budget alone. Pick options or **Select Lehar's suggestion**.
+5. Use **Undo**, or restore any earlier version from **History**.
+
+More demos: _Same wedding, 20% over budget_ · _A 6th birthday party_ · _A society Diwali mela_.
+
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -66,157 +140,214 @@ flowchart LR
   UI --> CORE[Deterministic core<br/>budget · timeline · trade-offs<br/>vendors · change parser · diff]
   CORE -->|numbers, dates, ripples| UI
   UI -->|only on explicit actions| API[/POST /api/ai<br/>Vercel Function/]
-  API --> G1[Gemini 3.8 Flash] -.fallback.-> G2[Gemini 3.1 Flash-Lite] -.fallback.-> OR[OpenRouter :free<br/>Nemotron 3.5 Lightning] -.fallback.-> NV[NVIDIA NIM<br/>Nemotron 3.5 Lightning] -.fallback.-> R[Built-in rules]
+  API --> G1[Gemini 3.8 Flash] -.fallback.-> G2[Gemini 3.1 Flash-Lite] -.fallback.-> OR[OpenRouter<br/>Nemotron 3.5 Lightning :free] -.fallback.-> NV[NVIDIA NIM<br/>Nemotron 3.5 Lightning] -.fallback.-> R[Built-in rules]
   API -->|validated, sanitised JSON| UI
   UI <--> LS[(localStorage<br/>zod-validated)]
 ```
 
-- **The deterministic core** (`src/core`, pure TypeScript) owns everything that must be correct: budget
-  lines that always sum exactly, per-guest maths, warning thresholds, a dependency-ordered and
-  compressible schedule, delay propagation, trade-off ranking, quote comparison, the change parser and
-  the plan diff. It runs in the browser, so the plan is instant and works offline.
-- **GenAI** is used only where it adds value (see §5). Its output is treated as untrusted: it is
-  schema-constrained, re-validated with zod on the server _and_ in the browser, sanitised (no prices, URLs,
-  phone numbers or emails) and labelled with its source.
-- **A change is data, not a rebuild.** A change becomes a `ProfilePatch`. `diffPlans(before, after)`
-  computes the ripples before you apply it, and the store keeps an undo/redo history of every committed
-  version.
+| Layer                                     | Responsibility                                                                                                                                                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Deterministic core** (`src/core`)       | Budget maths, scheduling and compression, delay propagation, trade-off ranking, quote comparison, change parsing and plan diffs. Pure TypeScript with no framework imports (lint-enforced), shared by browser and server. |
+| **State** (`src/state`)                   | A reducer where every change is a patch, so it can be previewed, applied, undone and restored (20 versions).                                                                                                              |
+| **AI gateway** (`server/`, `api/`)        | A single `POST /api/ai` endpoint: request guards → validation → rate limit → injection screen → cache → provider chain → deterministic fallback.                                                                          |
+| **UI** (`src/features`, `src/components`) | Lazy-loaded screens built on accessible primitives (dialogs, tabs, fields, live regions, labelled scroll regions).                                                                                                        |
 
-## 5. Where GenAI is used, and where it deliberately is not
+Design decisions are recorded as ADRs in [`docs/DECISIONS.md`](docs/DECISIONS.md), and the module map is
+in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-| Used for                                                       | Why AI                                  | Guardrails                                                                                                                                                                                                                                                        |
-| -------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Personalised ideas** and refinements                         | Creative, context-heavy and subjective  | Schema output; told never to state prices, vendors or availability; amounts and URLs stripped; source badge                                                                                                                                                       |
-| **Understanding free-text changes** that the rules can't parse | Natural language is varied              | Rules run first (they are instant and exact; typical changes never need the AI). AI output is mapped into the same validated `Change` type and range-checked, the preview is labelled "Interpreted by AI, please check", and nothing applies without confirmation |
-| **Vendor questions tailored to the event**                     | Domain knowledge applied to your guests | De-duplicated, sanitised; the generic checklist always remains                                                                                                                                                                                                    |
-| _Not used:_ budgets, dates, trade-offs, quote maths, schedules | These must be exact and explainable     | Pure functions with unit and property-based tests                                                                                                                                                                                                                 |
+## AI integration
 
-**Models (free tier only, chosen to balance latency, accuracy and cost):**
+### Where AI is used, and where it is not
 
-1. `gemini-3.8-flash` via the official **`@google/genai`** SDK, with `thinkingLevel: LOW` and a JSON-schema response.
-2. `gemini-3.1-flash-lite`: the fastest model, on the same free key.
-3. OpenRouter `nvidia/nemotron-3.5-lightning:free`, with reasoning off and the schema repeated in the
-   prompt (this model does not support `response_format`).
-4. NVIDIA NIM `nvidia/nemotron-3.5-lightning-30b-a3b` on a free build.nvidia.com key, with thinking off
-   (`chat_template_kwargs.enable_thinking: false`).
-5. **Built-in rules**, so the app never breaks and the fallback is labelled "Built-in suggestion".
+| Used for                                                         | Guardrails                                                                                                                                    |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Personalised ideas and refinements                               | Schema-constrained output; instructed never to state prices, vendors or availability; amounts, URLs and contacts stripped; source badge       |
+| Free-text changes the rules cannot parse                         | Rules run first. AI output maps into the same validated, range-checked `Change` type, is labelled "Interpreted by AI", and needs confirmation |
+| Vendor questions tailored to the event                           | De-duplicated and sanitised; the built-in checklist always remains                                                                            |
+| **Not used:** budgets, dates, schedules, trade-offs, quote maths | Pure functions covered by unit and property-based tests                                                                                       |
 
-Cost safety is enforced in code (`server/config.ts`). Only Gemini Flash, Flash-Lite and Gemma ids, and
-OpenRouter ids ending in `:free`, are accepted (NVIDIA ids must be plain catalog ids, used with a free
-Developer Program key); anything else is dropped at startup and covered by tests.
-Other protections: per-attempt timeouts (12 s for Gemini, 22 s for free endpoints), an overall 50 s
-deadline, a circuit breaker after 429/5xx, an
-LRU cache and per-IP rate limits, all to protect the free quotas.
+### Provider chain (free tiers only)
 
-**Google services used:** Gemini API (`@google/genai`), Google Calendar (per-task "add to Google Calendar"
-links and a full `.ics` export) and Google Maps (vendor search links). The Calendar and Maps integrations
-are keyless links, so they add no secrets.
+| Order | Provider                                           | How it is called                                                                        |
+| ----- | -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 1     | Google Gemini `gemini-3.8-flash`                   | Official `@google/genai` SDK, JSON-schema response, `thinkingLevel: LOW`                |
+| 2     | Google Gemini `gemini-3.1-flash-lite`              | Same key; the fastest Gemini fallback                                                   |
+| 3     | OpenRouter `nvidia/nemotron-3.5-lightning:free`    | Reasoning off; JSON Schema included in the prompt (the model ignores `response_format`) |
+| 4     | NVIDIA NIM `nvidia/nemotron-3.5-lightning-30b-a3b` | Free build.nvidia.com endpoint; thinking off via `chat_template_kwargs`                 |
+| 5     | Built-in rules                                     | Always available; labelled "Built-in suggestion"                                        |
 
-## 6. Quality at a glance
+Every provider is optional; the chain uses whichever keys are configured. OpenRouter and NVIDIA share a
+single OpenAI-compatible client (`server/ai/providers/openaiCompatible.ts`).
 
-| Area              | Details                                                                                                                                                                                                                                                                                                                                                                                         |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Code quality**  | Strict TypeScript (`noUncheckedIndexedAccess`, a separate NodeNext config for the server) · ESLint `strictTypeChecked` + `jsx-a11y/strict` + `react-hooks` with **0 warnings** · Prettier · zod schemas as the single source of truth for types · pure core with no framework imports (lint-enforced) · small modules · ADRs in [`docs/DECISIONS.md`](docs/DECISIONS.md)                        |
-| **Security**      | [`SECURITY.md`](SECURITY.md): server-only keys, strict CSP with no `unsafe-inline`, HSTS, COOP/CORP, same-origin API, 8 KB body cap, zod `strictObject` validation, rate limiting, prompt-injection screen, `<event_data>` delimiting with `<` escaped, output sanitiser, no `dangerouslySetInnerHTML`, validated localStorage and imports, PII minimisation, secret scan and `npm audit` in CI |
-| **Performance**   | About 93 kB gzip first load and 120 kB total JS (CI-enforced budget) · lazy-loaded screens · system fonts, inline SVG, no images · immutable asset caching · AI called only on explicit actions, with caching and de-duplication · deterministic change parsing with zero AI calls for typical changes                                                                                          |
-| **Testing**       | [`docs/TESTING.md`](docs/TESTING.md): unit and integration tests (Vitest, Testing Library, fast-check property tests, axe) + **5 Playwright journeys × 2 devices**. Coverage gates: core ≥ 95%, server ≥ 95%, overall ≥ 90%                                                                                                                                                                     |
-| **Accessibility** | [`docs/ACCESSIBILITY.md`](docs/ACCESSIBILITY.md): WCAG 2.2 AA, with axe at 0 violations on every screen in both themes · colour contrast unit-tested from the real tokens · keyboard-only e2e · reflow at 320 px tested · focus management, live regions, error summary, labelled scroll regions, reduced motion                                                                                |
+### Cost and reliability safeguards
 
-## 7. Assumptions
+- **Free-tier allowlist in code** (`server/config.ts`): only Gemini Flash, Flash-Lite and Gemma ids,
+  OpenRouter ids ending in `:free`, and NVIDIA catalog ids are accepted. Anything else is dropped at
+  startup and reported.
+- **Timeouts:** 12 s per Gemini attempt, 22 s per free-endpoint attempt, 50 s for the whole chain
+  (within the function's 60 s limit).
+- **Circuit breaker** after quota, overload or timeout errors, an LRU response cache, request
+  de-duplication in the browser, and per-IP rate limits (8 per minute, 80 per day).
+- **Content-free logs:** provider, status, duration and a short outcome; never user input or model
+  output.
 
-- **Prices are planning assumptions**, not quotes: round, mid-range figures for an Indian metro or
-  tier-2 city in 2026 at the "standard" tier (`src/core/constants/rates.ts`, every one documented). Simple
-  is about 60% and premium about 170% of standard. A 10% buffer is the default. Hosts can overwrite any rate.
-- Ideal lead times come from common Indian practice (e.g. book the wedding venue about 100 days ahead).
-  With less time, deadlines are compressed proportionally and flagged.
-- Currency is INR with Indian digit grouping. The UI is in English (Hindi is a planned extension).
-- One host per plan, stored in their own browser. There is no account, sync or multi-user editing.
-- Lehar does **not** search, rate, book or verify real vendors, and does not check availability or prices.
+Prompts are versioned in `server/ai/prompts.ts`; their design and changelog are in
+[`docs/PROMPTS.md`](docs/PROMPTS.md).
 
-## 8. Run it locally
+## Tech stack
+
+| Area       | Technology                                                                               |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| Frontend   | React 19, TypeScript 6 (strict), Vite 8, hand-written CSS with design tokens             |
+| Validation | zod (`zod/mini`) as the single source of truth for types, shared by client and server    |
+| Backend    | Vercel Functions (Node 22, Web-standard `fetch` handlers)                                |
+| AI         | Google Gemini (`@google/genai`), OpenRouter, NVIDIA NIM                                  |
+| Google     | Gemini API, Google Calendar links and `.ics` export, Google Maps search links (keyless)  |
+| Testing    | Vitest, Testing Library, fast-check, axe-core, Playwright with `@axe-core/playwright`    |
+| Tooling    | ESLint (`strictTypeChecked`, `jsx-a11y/strict`, `react-hooks`), Prettier, GitHub Actions |
+
+## Getting started
+
+### Prerequisites
+
+- Node.js **22.x** and npm
+- Optional: at least one AI key (see [Configuration](#configuration)). Without keys, Lehar runs fully
+  on its built-in rules.
+
+### Install and run
 
 ```bash
+git clone https://github.com/arsinghin/lehar.git
+cd lehar
 npm ci
-npm run dev          # SPA only. AI features fall back to built-in suggestions.
-npx vercel dev       # SPA + /api functions (needs .env.local, see .env.example)
-npm run verify       # typecheck, lint, format, tests + coverage, secret scan, build, size budget
-npm run test:e2e     # Playwright (run `npx playwright install chromium` once,
-                     # or set PW_CHROMIUM_PATH to an installed Chromium)
+
+npm run dev        # the app only; AI features use built-in suggestions
+npx vercel dev     # the app and the /api functions, reading keys from .env.local
 ```
 
-### Deploy to Vercel (free Hobby plan)
+To use AI locally, copy `.env.example` to `.env.local` and add your keys.
 
-1. Push this repository to GitHub.
-2. In Vercel, use **Add New → Project → Import** on the repo. The framework preset is **Vite**. The build
-   command, output directory, headers and function settings come from `vercel.json`.
-3. **Settings → Environment Variables** (Production and Preview):
-   - `GEMINI_API_KEY` (recommended): from [Google AI Studio](https://aistudio.google.com/), in a project
-     with **no billing account**, so it physically cannot be charged. Gemini is the fastest and most
-     reliable option.
-   - `OPENROUTER_API_KEY` (optional fallback, or the only provider). Keep the OpenRouter balance at $0.
-     In OpenRouter's [privacy settings](https://openrouter.ai/settings/privacy), allow the free endpoints;
-     otherwise every free model answers "No endpoints found matching your data policy".
-   - `NVIDIA_API_KEY` (optional fallback after OpenRouter): a free NVIDIA Developer Program key from
-     [build.nvidia.com](https://build.nvidia.com/). Use only models marked "Free Endpoint".
-   - Optional: `GEMINI_MODELS`, `OPENROUTER_MODELS` and `NVIDIA_MODELS` (comma-separated, free-tier ids
-     only), and `OPENROUTER_REASONING=low` if you pick an OpenRouter model that requires reasoning.
-4. **Redeploy** after changing environment variables. Then open `/api/health`, which reports which
-   providers are configured (as booleans only).
+### Scripts
 
-### Troubleshooting: "AI suggestions are unavailable right now"
+| Command                 | Description                                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`           | Start the Vite dev server                                                                                     |
+| `npm run build`         | Production build to `dist/`                                                                                   |
+| `npm run preview`       | Serve the production build on port 4173                                                                       |
+| `npm test`              | Run unit and integration tests                                                                                |
+| `npm run test:coverage` | Tests with coverage thresholds                                                                                |
+| `npm run test:e2e`      | Playwright journeys on desktop and mobile (`npx playwright install chromium` once, or set `PW_CHROMIUM_PATH`) |
+| `npm run lint`          | ESLint with zero warnings allowed                                                                             |
+| `npm run typecheck`     | Type-check the browser app and the Node ESM server                                                            |
+| `npm run verify`        | Everything CI runs: typecheck, lint, format, tests with coverage, secret scan, build, size budget             |
 
-This message means every configured model failed, so Lehar used its built-in rules. Open the Vercel
-project → **Logs**, filter for `provider_failed`, and read the `outcome` field:
+## Configuration
 
-| `outcome`                                                             | Fix                                                                                                        |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `Provider timed out`                                                  | The free endpoint was slow or busy; try again, add `NVIDIA_API_KEY` as a fallback, or add `GEMINI_API_KEY` |
-| `OpenRouter 404: privacy settings block free models`                  | Allow free endpoints in OpenRouter's privacy settings                                                      |
-| `OpenRouter 401: invalid OPENROUTER_API_KEY`                          | Re-copy the key into Vercel, then redeploy                                                                 |
-| `OpenRouter 429: free-model rate limit`                               | Free models allow only a few dozen requests a day on a $0 account; add another provider                    |
-| `OpenRouter 400: model needs reasoning, set OPENROUTER_REASONING=low` | Set that variable, or pick a model whose reasoning can be switched off                                     |
-| `NVIDIA 401: invalid NVIDIA_API_KEY`                                  | Re-copy the `nvapi-…` key into Vercel, then redeploy                                                       |
-| `NVIDIA 404: model not found, check NVIDIA_MODELS`                    | Use an id exactly as shown on build.nvidia.com                                                             |
-| `NVIDIA 429: free endpoint rate limit`                                | Wait a minute; free endpoints are rate limited per key                                                     |
-| `… ran out of tokens before answering`                                | The model reasoned too long; keep reasoning off or choose a non-reasoning model                            |
-| `Model output failed schema validation`                               | The model ignored the schema; try another free model                                                       |
+All variables are server-side only and are never sent to the browser. Never prefix them with `VITE_`.
 
-Logs contain only operational fields (provider, status, duration, outcome), never what people typed.
+| Variable               | Required | Default                                  | Description                                                                 |
+| ---------------------- | -------- | ---------------------------------------- | --------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`       | No       | none                                     | Google AI Studio key, ideally from a project **without** a billing account  |
+| `GEMINI_MODELS`        | No       | `gemini-3.8-flash,gemini-3.1-flash-lite` | Comma-separated, tried in order; Flash, Flash-Lite and Gemma only           |
+| `OPENROUTER_API_KEY`   | No       | none                                     | OpenRouter key; keep the balance at $0                                      |
+| `OPENROUTER_MODELS`    | No       | `nvidia/nemotron-3.5-lightning:free`     | Comma-separated; only `:free` ids (or `openrouter/free`)                    |
+| `OPENROUTER_REASONING` | No       | `off`                                    | `off` (fastest) or `low`, for models that require reasoning such as gpt-oss |
+| `NVIDIA_API_KEY`       | No       | none                                     | Free NVIDIA Developer Program key from build.nvidia.com                     |
+| `NVIDIA_MODELS`        | No       | `nvidia/nemotron-3.5-lightning-30b-a3b`  | Comma-separated catalog ids; use models marked "Free Endpoint"              |
+| `ALLOWED_ORIGINS`      | No       | none                                     | Extra origins allowed to call `/api`; the deployment's own origin always is |
 
-## 9. Project structure
+`GET /api/health` reports which providers are configured, as booleans and model ids only.
+
+## Deployment
+
+Lehar is designed for the free **Vercel Hobby** plan.
+
+1. Import the repository in Vercel (**Add New → Project**). The framework preset is **Vite**; the build
+   command, output directory, security headers and function limits come from `vercel.json`.
+2. Add the environment variables you need under **Settings → Environment Variables** for Production and
+   Preview.
+3. For OpenRouter, allow free endpoints in its [privacy settings](https://openrouter.ai/settings/privacy);
+   otherwise free models answer "No endpoints found matching your data policy".
+4. Redeploy after any change to environment variables, then check `/api/health`.
+
+## Troubleshooting
+
+If the app shows _"AI suggestions are unavailable right now, so Lehar used its built-in suggestions"_,
+every configured provider failed. In Vercel, open **Logs**, filter for `provider_failed`, and read the
+`outcome` field.
+
+| `outcome`                                            | Resolution                                                                        |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `Provider timed out`                                 | The free endpoint was busy. Retry, or add another provider as a fallback          |
+| `OpenRouter 404: privacy settings block free models` | Allow free endpoints in OpenRouter's privacy settings                             |
+| `OpenRouter 401` / `NVIDIA 401`                      | Re-copy the key into Vercel, then redeploy                                        |
+| `OpenRouter 429` / `NVIDIA 429`                      | Free-tier rate limit reached. Wait, or add another provider                       |
+| `OpenRouter 400: model needs reasoning …`            | Set `OPENROUTER_REASONING=low`, or choose a model whose reasoning can be disabled |
+| `NVIDIA 404: model not found …`                      | Use the model id exactly as shown on build.nvidia.com                             |
+| `… ran out of tokens before answering`               | Keep reasoning off, or choose a non-reasoning model                               |
+| `Model output failed schema validation`              | The model ignored the schema. Try another free model                              |
+
+## Quality and engineering
+
+| Area              | Practices                                                                                                                                                                                                                                                                                                                               |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Testing**       | Unit, integration and component tests (Vitest, Testing Library), property-based tests for the core invariants (fast-check), axe checks on every screen, and Playwright journeys on desktop and mobile under the production CSP. Coverage gates: core ≥ 95%, server ≥ 95%, overall ≥ 90%. See [`docs/TESTING.md`](docs/TESTING.md).      |
+| **Security**      | Server-only keys, strict CSP without `unsafe-inline`, HSTS, COOP/CORP, same-origin API, 8 KB body cap, strict schema validation, rate limiting, prompt-injection screening, delimited and escaped user data, output sanitising, validated storage and imports, secret scanning and `npm audit` in CI. See [`SECURITY.md`](SECURITY.md). |
+| **Accessibility** | WCAG 2.2 AA target: zero axe violations in light and dark themes, colour contrast unit-tested from the design tokens, keyboard-only end-to-end journey, reflow at 320 px, focus management, live regions and reduced motion. See [`docs/ACCESSIBILITY.md`](docs/ACCESSIBILITY.md).                                                      |
+| **Performance**   | About 93 kB gzipped on first load against a CI-enforced 120 kB budget; lazy-loaded screens; system fonts and inline SVG; immutable asset caching; AI calls only on explicit user actions.                                                                                                                                               |
+| **Code quality**  | Strict TypeScript with `noUncheckedIndexedAccess`, a separate NodeNext config for the server, ESLint type-checked rules with zero warnings, Prettier, small focused modules, and ADRs for key decisions.                                                                                                                                |
+
+## Project structure
 
 ```
-api/                 Vercel Functions: ai.ts (POST), health.ts (GET)
-server/              AI gateway: handler, provider chain, prompts, tasks, security, cache, config
-src/core/            Pure domain engines + zod schemas (shared by the browser and the server)
-src/features/        Screens: home, intake, overview, budget, timeline, vendors, ideas, changes, history
-src/components/      Accessible primitives: Field, ChoiceGroup, Dialog, Tabs, Notice, TableScroll…
-src/state/           Store (undo/redo), persistence, React context
-tests/               Test setup, fixtures, Playwright journeys
-docs/                Architecture, prompts, testing, accessibility, decisions
+api/              Vercel Functions: ai.ts (POST), health.ts (GET)
+server/           AI gateway: handler, provider chain, providers, prompts, tasks, security, config
+src/core/         Pure domain engines and zod schemas, shared by browser and server
+src/features/     Screens: home, intake, overview, budget, timeline, vendors, ideas, changes, history
+src/components/   Accessible UI primitives
+src/state/        Store with undo/redo, persistence, React context
+src/styles/       Design tokens, base, components and print styles
+tests/            Test setup, fixtures and Playwright journeys
+docs/             Architecture, decisions, prompts, testing and accessibility
 ```
 
-## 10. Scope, limitations and roadmap
+## Assumptions and limitations
 
-Deliberately out of scope, to keep the tool small and focused: a vendor marketplace, payments, login,
-guest RSVP and invitations. Limitations: rate limiting and caching are per serverless instance (a shared
-store such as Vercel KV would be the next step), and free-tier model availability can change, which is
-why every model id is configurable and the rules fallback exists. Roadmap: a Hindi UI, shared plans for
-families, and an installable offline PWA.
+- **Prices are planning assumptions, not quotes:** round, mid-range figures for an Indian metro or
+  tier-2 city in 2026 at the standard tier, documented in `src/core/constants/rates.ts`. Simple is
+  about 60% and premium about 170% of standard, with a 10% default buffer. Every rate can be overridden.
+- Lead times follow common Indian practice and are compressed proportionally when time is short.
+- Currency is INR with Indian digit grouping; the interface is in English.
+- One host per plan, stored in that browser. There are no accounts, sync or multi-user editing.
+- Lehar does not search, rate, book or verify vendors, and does not check availability or prices.
+- Rate limiting and caching are per serverless instance. Free-tier model availability can change, which
+  is why every model id is configurable and a rules fallback always exists.
 
-## 11. Contributing
+## Roadmap
 
-Issues and pull requests are welcome. Please run `npm run verify` before opening a pull request, keep
-every number and date in the deterministic core, and add a test with each change. Prompt changes should
-bump the version in `server/ai/prompts.ts` and add a row to [`docs/PROMPTS.md`](docs/PROMPTS.md).
-Security issues: see [`SECURITY.md`](SECURITY.md).
+- Hindi interface
+- Shared plans for families and committees
+- Installable offline PWA
+- Shared rate limiting and caching (for example Vercel KV)
 
-## 12. License and credit
+## Contributing
+
+Contributions are welcome. Please open an issue to discuss larger changes first.
+
+1. Fork the repository and create a branch.
+2. Keep every number and date in the deterministic core, and add tests with each change.
+3. If you change a prompt, bump its version in `server/ai/prompts.ts` and add a row to
+   [`docs/PROMPTS.md`](docs/PROMPTS.md).
+4. Run `npm run verify` and make sure it passes before opening a pull request.
+
+Please report security issues privately as described in [`SECURITY.md`](SECURITY.md).
+
+## License and attribution
 
 Copyright 2026 **AR Singh** ([@arsinghin](https://github.com/arsinghin)). Licensed under the
 [Apache License 2.0](LICENSE).
 
-You may use, modify and distribute Lehar, **including commercially**, as long as you keep the
-[`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) files with your copy and show the attribution from `NOTICE`
-where your product lists credits or third-party notices. A credit line such as
+You may use, modify and distribute Lehar, including commercially, provided you keep the
+[`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) files with your copy and reproduce the attribution in
+`NOTICE` wherever your product lists credits or third-party notices. A visible credit such as
 _"Based on Lehar by AR Singh (@arsinghin)"_ with a link to this repository is appreciated.
