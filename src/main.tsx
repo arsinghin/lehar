@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
-import { applyTheme, initialTheme } from './components/ThemeToggle';
+import { applyTheme, initialTheme } from './lib/theme';
 import { PlanProvider } from './state/PlanContext';
 import './styles/tokens.css';
 import './styles/base.css';

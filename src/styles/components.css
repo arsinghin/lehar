@@ -228,6 +228,13 @@ main {
   gap: var(--space-1);
 }
 
+/* Label and control side by side, e.g. a select inside a table row. */
+.field--inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .field label,
 .field__label,
 legend {
@@ -267,7 +274,7 @@ legend {
   border: 2px solid var(--danger);
 }
 
-.input--narrow {
+.field--narrow {
   max-width: 12rem;
 }
 

@@ -289,13 +289,13 @@ every configured provider failed. In Vercel, open **Logs**, filter for `provider
 
 ## Quality and engineering
 
-| Area              | Practices                                                                                                                                                                                                                                                                                                                               |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Testing**       | Unit, integration and component tests (Vitest, Testing Library), property-based tests for the core invariants (fast-check), axe checks on every screen, and Playwright journeys on desktop and mobile under the production CSP. Coverage gates: core ≥ 95%, server ≥ 95%, overall ≥ 90%. See [`docs/TESTING.md`](docs/TESTING.md).      |
-| **Security**      | Server-only keys, strict CSP without `unsafe-inline`, HSTS, COOP/CORP, same-origin API, 8 KB body cap, strict schema validation, rate limiting, prompt-injection screening, delimited and escaped user data, output sanitising, validated storage and imports, secret scanning and `npm audit` in CI. See [`SECURITY.md`](SECURITY.md). |
-| **Accessibility** | WCAG 2.2 AA target: zero axe violations in light and dark themes, colour contrast unit-tested from the design tokens, keyboard-only end-to-end journey, reflow at 320 px, focus management, live regions and reduced motion. See [`docs/ACCESSIBILITY.md`](docs/ACCESSIBILITY.md).                                                      |
-| **Performance**   | About 93 kB gzipped on first load against a CI-enforced 120 kB budget; lazy-loaded screens; system fonts and inline SVG; immutable asset caching; AI calls only on explicit user actions.                                                                                                                                               |
-| **Code quality**  | Strict TypeScript with `noUncheckedIndexedAccess`, a separate NodeNext config for the server, ESLint type-checked rules with zero warnings, Prettier, small focused modules, and ADRs for key decisions.                                                                                                                                |
+| Area              | Practices                                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Testing**       | Unit, integration and component tests (Vitest, Testing Library), property-based tests for the core invariants (fast-check), axe checks on every screen, and Playwright journeys on desktop and mobile under the production CSP. Coverage gates: core ≥ 95%, server ≥ 95%, overall ≥ 90%. See [`docs/TESTING.md`](docs/TESTING.md).         |
+| **Security**      | Server-only keys, strict CSP without `unsafe-inline`, HSTS, COOP/CORP, same-origin API, 8 KB body cap, strict schema validation, rate limiting, prompt-injection screening, delimited and escaped user data, output sanitising, validated storage and imports, secret scanning and `npm audit` in CI. See [`SECURITY.md`](SECURITY.md).    |
+| **Accessibility** | WCAG 2.2 AA target: zero axe violations in light and dark themes, colour contrast unit-tested from the design tokens, keyboard-only end-to-end journey, reflow at 320 px, focus management, live regions and reduced motion. See [`docs/ACCESSIBILITY.md`](docs/ACCESSIBILITY.md).                                                         |
+| **Performance**   | About 93 kB gzipped on first load against a CI-enforced 120 kB budget; lazy-loaded screens; system fonts and inline SVG; immutable asset caching; AI calls only on explicit user actions.                                                                                                                                                  |
+| **Code quality**  | Strict TypeScript with `noUncheckedIndexedAccess` and no casts in production code, a separate NodeNext config for the server, ESLint type-checked rules with zero warnings plus enforced complexity, nesting and size limits, Prettier, one source of truth for every rule, tests next to the code they cover, and ADRs for key decisions. |
 
 ## Project structure
 
@@ -307,7 +307,7 @@ src/features/     Screens: home, intake, overview, budget, timeline, vendors, id
 src/components/   Accessible UI primitives
 src/state/        Store with undo/redo, persistence, React context
 src/styles/       Design tokens, base, components and print styles
-tests/            Test setup, fixtures and Playwright journeys
+tests/            Shared test helpers and fixtures, and the Playwright journeys (unit tests sit next to their code)
 docs/             Architecture, decisions, prompts, testing and accessibility
 ```
 
@@ -332,14 +332,8 @@ docs/             Architecture, decisions, prompts, testing and accessibility
 
 ## Contributing
 
-Contributions are welcome. Please open an issue to discuss larger changes first.
-
-1. Fork the repository and create a branch.
-2. Keep every number and date in the deterministic core, and add tests with each change.
-3. If you change a prompt, bump its version in `server/ai/prompts.ts` and add a row to
-   [`docs/PROMPTS.md`](docs/PROMPTS.md).
-4. Run `npm run verify` and make sure it passes before opening a pull request.
-
+Contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, how the code is
+organised, the enforced limits and how to test. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 Please report security issues privately as described in [`SECURITY.md`](SECURITY.md).
 
 ## License and attribution

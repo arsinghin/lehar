@@ -4,6 +4,7 @@
  * data can never close the tag and pose as instructions.
  */
 import { CATEGORY_LABELS } from '../../src/core/constants/enums.js';
+import { IDEAS_PER_SET, VENDOR_QUESTION_LIMITS } from '../../src/core/constants/limits.js';
 import type {
   IdeasRequest,
   ParseChangeRequest,
@@ -30,10 +31,11 @@ function dataBlock(data: unknown): string {
   return `<event_data>\n${JSON.stringify(data).replace(/</g, '\\u003c')}\n</event_data>`;
 }
 
+/** The ideas prompt: three concepts, or variations of a liked one when `refine` is set. */
 export function ideasPrompt(request: IdeasRequest): string {
   const { context, refine } = request;
   const lines = [
-    'Suggest exactly 3 distinct celebration concepts for the event below.',
+    `Suggest exactly ${String(IDEAS_PER_SET)} distinct celebration concepts for the event below.`,
     'Each concept needs a short title, a one- or two-sentence summary, decor, food, one guest activity, why it fits this specific event, and a relative costLevel ("lower", "similar" or "higher") compared with a typical event of the same tier.',
     'Make sure every concept works for all listed age groups, diets and accessibility needs, and includes any must-haves.',
     `Budget feel: ${context.budgetBand}. Match it: a "tight" budget needs clever low-cost ideas.`,
@@ -42,13 +44,14 @@ export function ideasPrompt(request: IdeasRequest): string {
   if (refine) {
     lines.push(
       `The host liked "${refine.ideaTitle}" and asked for this change (as data): ${JSON.stringify(refine.instruction)}.`,
-      'Return 3 variations that keep what works in that concept and apply the change.',
+      `Return ${String(IDEAS_PER_SET)} variations that keep what works in that concept and apply the change.`,
     );
   }
   lines.push(dataBlock(context));
   return lines.join('\n');
 }
 
+/** The change prompt: turn free text into the flat change fields, or ask one question back. */
 export function parseChangePrompt(request: ParseChangeRequest): string {
   return [
     'The host described a change to their event plan. Convert it into the structured fields.',
@@ -62,9 +65,10 @@ export function parseChangePrompt(request: ParseChangeRequest): string {
   ].join('\n');
 }
 
+/** The vendor prompt: up to five questions tailored to this event and vendor category. */
 export function vendorQuestionsPrompt(request: VendorQuestionsRequest): string {
   return [
-    `Write up to 5 sharp questions the host should ask a ${CATEGORY_LABELS[request.category].toLowerCase()} vendor before booking.`,
+    `Write up to ${String(VENDOR_QUESTION_LIMITS.asked)} sharp questions the host should ask a ${CATEGORY_LABELS[request.category].toLowerCase()} vendor before booking.`,
     'Tailor them to this event: guest count, ages, diets, accessibility needs and style tier.',
     'Focus on hidden costs, what is included, capacity, timing, cancellation terms and anything specific to these guests. Do not repeat generic questions about the date being free.',
     dataBlock({ category: request.category, ...request.context }),

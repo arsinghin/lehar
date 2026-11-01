@@ -13,11 +13,11 @@ import type {
   Priority,
   Tier,
 } from '../../core/constants/enums';
-import { addDays, diffDays, isValidIsoDate } from '../../core/dates';
+import { addDays, diffDays, isValidIsoDate, type IsoDate } from '../../core/dates';
 import { formatInr, parseInrAmount } from '../../core/money';
 import { createProfile, defaultPriorities, relevantCategories } from '../../core/profile';
 import { EventProfileSchema, type EventProfile } from '../../core/schemas';
-import type { FieldError } from '../../components/ErrorSummary';
+import { checkBudget, checkGuests, parseWholeNumber, type FieldError } from '../../core/validation';
 
 export interface IntakeDraft {
   eventType: EventType;
@@ -45,7 +45,9 @@ export const STEPS = [
   { id: 'review', title: 'Review' },
 ] as const;
 
-export type StepIndex = 0 | 1 | 2 | 3 | 4;
+export type StepId = (typeof STEPS)[number]['id'];
+/** The review step, where the plan is created. */
+export const LAST_STEP = STEPS.length - 1;
 
 export const FIELD_IDS = {
   eventType: 'intake-event-type',
@@ -61,7 +63,8 @@ export const FIELD_IDS = {
 
 const DEFAULT_LEAD_DAYS: Record<EventType, number> = { wedding: 120, birthday: 30, community: 60 };
 
-export function initialDraft(today: string, eventType: EventType = 'wedding'): IntakeDraft {
+/** An empty intake for an event type, dated a typical lead time from today. */
+export function initialDraft(today: IsoDate, eventType: EventType = 'wedding'): IntakeDraft {
   return {
     eventType,
     title: '',
@@ -85,7 +88,7 @@ export function initialDraft(today: string, eventType: EventType = 'wedding'): I
 export function withEventType(
   draft: IntakeDraft,
   eventType: EventType,
-  today: string,
+  today: IsoDate,
 ): IntakeDraft {
   if (draft.eventType === eventType) return draft;
   const relevant = new Set(relevantCategories(eventType));
@@ -98,12 +101,7 @@ export function withEventType(
   };
 }
 
-export function parseGuests(value: string): number | null {
-  const trimmed = value.trim().replace(/,/g, '');
-  if (!/^\d+$/.test(trimmed)) return null;
-  return Number(trimmed);
-}
-
+/** Must-haves typed one per line (or separated by commas or semicolons). */
 export function parseMustHaves(value: string): string[] {
   return value
     .split(/[\n,;]/)
@@ -117,92 +115,88 @@ export function budgetPreview(value: string): string | null {
   return amount === null ? null : `= ${formatInr(amount)}`;
 }
 
-export function validateStep(step: StepIndex, draft: IntakeDraft, today: string): FieldError[] {
+function validateOccasion(draft: IntakeDraft, today: IsoDate): FieldError[] {
   const errors: FieldError[] = [];
-  if (step === 0) {
-    if (!isValidIsoDate(draft.eventDate)) {
-      errors.push({ fieldId: FIELD_IDS.eventDate, message: 'Enter the event date.' });
-    } else if (diffDays(draft.eventDate, today) < 0) {
-      errors.push({
-        fieldId: FIELD_IDS.eventDate,
-        message: 'The event date cannot be in the past.',
-      });
-    } else if (diffDays(draft.eventDate, today) > LIMITS.maxHorizonDays) {
-      errors.push({
-        fieldId: FIELD_IDS.eventDate,
-        message: 'Lehar plans up to two years ahead.',
-      });
-    }
-    if (draft.title.length > LIMITS.maxTitle) {
-      errors.push({
-        fieldId: FIELD_IDS.title,
-        message: `Keep the name under ${LIMITS.maxTitle} characters.`,
-      });
-    }
-    if (draft.city.length > LIMITS.maxCity) {
-      errors.push({
-        fieldId: FIELD_IDS.city,
-        message: `Keep the city under ${LIMITS.maxCity} characters.`,
-      });
-    }
+  const dateError = eventDateError(draft.eventDate, today);
+  if (dateError) errors.push({ fieldId: FIELD_IDS.eventDate, message: dateError });
+  if (draft.title.length > LIMITS.maxTitle) {
+    errors.push({
+      fieldId: FIELD_IDS.title,
+      message: `Keep the name under ${String(LIMITS.maxTitle)} characters.`,
+    });
   }
-  if (step === 1) {
-    const guests = parseGuests(draft.guests);
-    if (guests === null)
-      errors.push({
-        fieldId: FIELD_IDS.guests,
-        message: 'Enter the number of guests as a whole number.',
-      });
-    else if (guests < LIMITS.minGuests || guests > LIMITS.maxGuests) {
-      errors.push({
-        fieldId: FIELD_IDS.guests,
-        message: `Guests must be between ${LIMITS.minGuests} and ${LIMITS.maxGuests.toLocaleString('en-IN')}.`,
-      });
-    }
-    const budget = parseInrAmount(draft.budget);
-    if (budget === null)
-      errors.push({
-        fieldId: FIELD_IDS.budget,
-        message: 'Enter a budget, for example “8 lakh” or “80000”.',
-      });
-    else if (budget < LIMITS.minBudget || budget > LIMITS.maxBudget) {
-      errors.push({
-        fieldId: FIELD_IDS.budget,
-        message: `The budget must be between ${formatInr(LIMITS.minBudget)} and ${formatInr(LIMITS.maxBudget)}.`,
-      });
-    }
-  }
-  if (step === 3) {
-    const mustHaves = parseMustHaves(draft.mustHaves);
-    if (mustHaves.length > LIMITS.maxMustHaves) {
-      errors.push({
-        fieldId: FIELD_IDS.mustHaves,
-        message: `List up to ${LIMITS.maxMustHaves} must-haves.`,
-      });
-    } else if (mustHaves.some((item) => item.length > LIMITS.maxMustHaveLength)) {
-      errors.push({
-        fieldId: FIELD_IDS.mustHaves,
-        message: `Keep each must-have under ${LIMITS.maxMustHaveLength} characters.`,
-      });
-    }
-    if (draft.culture.length > LIMITS.maxCulture) {
-      errors.push({
-        fieldId: FIELD_IDS.culture,
-        message: `Keep this under ${LIMITS.maxCulture} characters.`,
-      });
-    }
+  if (draft.city.length > LIMITS.maxCity) {
+    errors.push({
+      fieldId: FIELD_IDS.city,
+      message: `Keep the city under ${String(LIMITS.maxCity)} characters.`,
+    });
   }
   return errors;
 }
 
-export function validateAll(draft: IntakeDraft, today: string): FieldError[] {
-  return ([0, 1, 2, 3] as const).flatMap((step) => validateStep(step, draft, today));
+function eventDateError(eventDate: string, today: IsoDate): string | null {
+  if (!isValidIsoDate(eventDate)) return 'Enter the event date.';
+  const daysAway = diffDays(eventDate, today);
+  if (daysAway < 0) return 'The event date cannot be in the past.';
+  if (daysAway > LIMITS.maxHorizonDays) return 'Lehar plans up to two years ahead.';
+  return null;
+}
+
+function validateSize(draft: IntakeDraft): FieldError[] {
+  const errors: FieldError[] = [];
+  const guests = checkGuests(draft.guests);
+  if (!guests.ok) errors.push({ fieldId: FIELD_IDS.guests, message: guests.message });
+  const budget = checkBudget(draft.budget);
+  if (!budget.ok) errors.push({ fieldId: FIELD_IDS.budget, message: budget.message });
+  return errors;
+}
+
+function validatePeople(draft: IntakeDraft): FieldError[] {
+  const errors: FieldError[] = [];
+  const mustHaves = parseMustHaves(draft.mustHaves);
+  if (mustHaves.length > LIMITS.maxMustHaves) {
+    errors.push({
+      fieldId: FIELD_IDS.mustHaves,
+      message: `List up to ${String(LIMITS.maxMustHaves)} must-haves.`,
+    });
+  } else if (mustHaves.some((item) => item.length > LIMITS.maxMustHaveLength)) {
+    errors.push({
+      fieldId: FIELD_IDS.mustHaves,
+      message: `Keep each must-have under ${String(LIMITS.maxMustHaveLength)} characters.`,
+    });
+  }
+  if (draft.culture.length > LIMITS.maxCulture) {
+    errors.push({
+      fieldId: FIELD_IDS.culture,
+      message: `Keep this under ${String(LIMITS.maxCulture)} characters.`,
+    });
+  }
+  return errors;
+}
+
+const STEP_VALIDATORS: Record<StepId, (draft: IntakeDraft, today: IsoDate) => FieldError[]> = {
+  occasion: validateOccasion,
+  size: validateSize,
+  priorities: () => [],
+  people: validatePeople,
+  review: () => [],
+};
+
+/** The errors that stop the host leaving step `step` (an index into STEPS). */
+export function validateStep(step: number, draft: IntakeDraft, today: IsoDate): FieldError[] {
+  const id = STEPS[step]?.id;
+  return id ? STEP_VALIDATORS[id](draft, today) : [];
+}
+
+/** Errors across every step, used before the plan is created. */
+export function validateAll(draft: IntakeDraft, today: IsoDate): FieldError[] {
+  return STEPS.flatMap((_, step) => validateStep(step, draft, today));
 }
 
 /** Builds the validated profile, or null if anything is invalid. */
-export function draftToProfile(draft: IntakeDraft, today: string): EventProfile | null {
+export function draftToProfile(draft: IntakeDraft, today: IsoDate): EventProfile | null {
   if (validateAll(draft, today).length > 0) return null;
-  const guests = parseGuests(draft.guests);
+  const guests = parseWholeNumber(draft.guests);
   const budget = parseInrAmount(draft.budget);
   if (guests === null || budget === null) return null;
   const profile: EventProfile = {

@@ -49,10 +49,12 @@ export function toDayNumber(iso: IsoDate): number {
   );
 }
 
+/** The ISO date for a day number (days since 1970-01-01, UTC). */
 export function fromDayNumber(dayNumber: number): IsoDate {
   return new Date(dayNumber * MS_PER_DAY).toISOString().slice(0, 10);
 }
 
+/** The date `days` after `iso` (before, when negative). */
 export function addDays(iso: IsoDate, days: number): IsoDate {
   return fromDayNumber(toDayNumber(iso) + Math.trunc(days));
 }
@@ -62,15 +64,22 @@ export function diffDays(to: IsoDate, from: IsoDate): number {
   return toDayNumber(to) - toDayNumber(from);
 }
 
-/** The user's local calendar date. */
+/** The current instant as an ISO timestamp, used to date history entries. */
+export function nowIso(now: Date = new Date()): string {
+  return now.toISOString();
+}
+
+/** Today's calendar date in the host's own time zone. */
 export function todayIso(now: Date = new Date()): IsoDate {
   return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 }
 
+/** "23 Feb 2027". */
 export function formatDate(iso: IsoDate): string {
   return DISPLAY_FORMAT.format(new Date(toDayNumber(iso) * MS_PER_DAY));
 }
 
+/** "Tuesday, 23 February 2027". */
 export function formatDateLong(iso: IsoDate): string {
   return DISPLAY_FORMAT_LONG.format(new Date(toDayNumber(iso) * MS_PER_DAY));
 }
@@ -80,6 +89,7 @@ export function monthOf(iso: IsoDate): number {
   return Number(iso.slice(5, 7));
 }
 
+/** The earlier of two dates. */
 export function minDate(a: IsoDate, b: IsoDate): IsoDate {
   return toDayNumber(a) <= toDayNumber(b) ? a : b;
 }

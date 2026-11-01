@@ -1,6 +1,8 @@
 import { Button } from '../../components/Button';
 import { formatDate } from '../../core/dates';
-import { nowIso, useOpenPlan } from '../../state/PlanContext';
+import { useOpenPlan } from '../../state/PlanContext';
+import { actions } from '../../state/store';
+import { UndoRedoButtons } from '../shared/UndoRedoButtons';
 
 const TIME_FORMAT = new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -23,24 +25,7 @@ export function HistoryView() {
           it was before any change. Planning started on {formatDate(plan.startDate)}.
         </p>
         <div className="row">
-          <Button
-            icon="undo"
-            disabled={state.past.length === 0}
-            onClick={() => {
-              dispatch({ type: 'history/undo' });
-            }}
-          >
-            Undo
-          </Button>
-          <Button
-            icon="redo"
-            disabled={state.future.length === 0}
-            onClick={() => {
-              dispatch({ type: 'history/redo' });
-            }}
-          >
-            Redo
-          </Button>
+          <UndoRedoButtons />
         </div>
       </section>
 
@@ -60,7 +45,7 @@ export function HistoryView() {
                 aria-label={`Restore the plan from before this: ${snapshot.reason}`}
                 size="s"
                 onClick={() => {
-                  dispatch({ type: 'history/restore', index, at: nowIso() });
+                  dispatch(actions.restore(index));
                 }}
               >
                 Restore the plan from before this

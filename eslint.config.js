@@ -37,7 +37,9 @@ export default tseslint.config(
     },
   },
   {
+    // React rules apply to the UI only; the core is framework-free.
     files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/core/**'],
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,
   },
@@ -50,6 +52,23 @@ export default tseslint.config(
         { patterns: ['react', 'react-dom', '../state/*', '../features/*'] },
       ],
     },
+  },
+  {
+    // Size and complexity limits keep every function readable on one screen.
+    files: ['src/**/*.{ts,tsx}', 'server/**/*.ts', 'api/**/*.ts'],
+    ignores: ['**/*.test.{ts,tsx}'],
+    rules: {
+      complexity: ['error', { max: 10, variant: 'modified' }],
+      'max-depth': ['error', 3],
+      'max-params': ['error', 4],
+      'max-lines-per-function': ['error', { max: 80, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['error', { max: 250, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Constants files are data tables (task templates, rates, checklists), not logic.
+    files: ['src/core/constants/**'],
+    rules: { 'max-lines': 'off' },
   },
   {
     // Mocks are passed around unbound and indexed results are asserted on, which is idiomatic in tests.

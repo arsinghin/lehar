@@ -4,14 +4,18 @@
  */
 import { createHash } from 'node:crypto';
 
+import { LruMap } from '../src/core/lruMap.js';
+
 export class TtlCache<V> {
-  private readonly entries = new Map<string, { value: V; expires: number }>();
+  private readonly entries: LruMap<string, { value: V; expires: number }>;
 
   constructor(
-    private readonly maxEntries: number,
+    maxEntries: number,
     private readonly ttlMs: number,
     private readonly now: () => number = Date.now,
-  ) {}
+  ) {
+    this.entries = new LruMap(maxEntries);
+  }
 
   get(key: string): V | undefined {
     const entry = this.entries.get(key);
@@ -20,20 +24,11 @@ export class TtlCache<V> {
       this.entries.delete(key);
       return undefined;
     }
-    // Refresh recency.
-    this.entries.delete(key);
-    this.entries.set(key, entry);
     return entry.value;
   }
 
   set(key: string, value: V): void {
-    this.entries.delete(key);
     this.entries.set(key, { value, expires: this.now() + this.ttlMs });
-    while (this.entries.size > this.maxEntries) {
-      const oldest = this.entries.keys().next().value;
-      if (oldest === undefined) break;
-      this.entries.delete(oldest);
-    }
   }
 
   get size(): number {
@@ -45,7 +40,7 @@ export class TtlCache<V> {
 export function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   if (value !== null && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
+    const entries = Object.entries(value)
       .filter(([, item]) => item !== undefined)
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(',')}}`;
@@ -53,6 +48,7 @@ export function stableStringify(value: unknown): string {
   return value === undefined ? 'null' : JSON.stringify(value);
 }
 
+/** A SHA-256 key for a payload, stable regardless of property order. */
 export function cacheKey(payload: unknown): string {
   return createHash('sha256').update(stableStringify(payload)).digest('hex');
 }

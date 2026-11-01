@@ -9,7 +9,7 @@
 import { TASK_TEMPLATES, type TaskPriority, type TaskTemplate } from './constants/tasks.js';
 import { addDays, diffDays, minDate, type IsoDate } from './dates.js';
 import type { EventType } from './constants/enums.js';
-import type { TaskProgress } from './schemas.js';
+import type { PlanState, TaskProgress } from './schemas.js';
 
 export type TaskState = 'done' | 'overdue' | 'blocked' | 'ready' | 'upcoming';
 
@@ -45,26 +45,27 @@ const PRIORITY_RANK: Record<TaskPriority, number> = { critical: 0, high: 1, norm
 export const READY_WINDOW_DAYS = 14;
 export const DO_NEXT_COUNT = 3;
 
+/** How many dependencies each task waits on. Throws on a dependency that does not exist. */
+function countDependencies(templates: readonly TaskTemplate[]): Map<string, number> {
+  const ids = new Set(templates.map((task) => task.id));
+  for (const task of templates) {
+    const unknown = task.dependsOn.find((dep) => !ids.has(dep));
+    if (unknown) throw new Error(`Task "${task.id}" depends on unknown task "${unknown}"`);
+  }
+  return new Map(templates.map((task) => [task.id, task.dependsOn.length]));
+}
+
 /** Kahn's algorithm. Throws on unknown dependencies or cycles, which are template bugs. */
 export function topologicalOrder(templates: readonly TaskTemplate[]): TaskTemplate[] {
-  const byId = new Map(templates.map((task) => [task.id, task]));
-  const indegree = new Map(templates.map((task) => [task.id, 0]));
-  for (const task of templates) {
-    for (const dep of task.dependsOn) {
-      if (!byId.has(dep)) throw new Error(`Task "${task.id}" depends on unknown task "${dep}"`);
-      indegree.set(task.id, (indegree.get(task.id) ?? 0) + 1);
-    }
-  }
-  const queue = templates.filter((task) => indegree.get(task.id) === 0);
+  const waiting = countDependencies(templates);
+  const queue = templates.filter((task) => waiting.get(task.id) === 0);
   const order: TaskTemplate[] = [];
-  while (queue.length > 0) {
-    const task = queue.shift();
-    if (!task) break;
+  for (let task = queue.shift(); task; task = queue.shift()) {
     order.push(task);
-    for (const next of templates) {
-      if (!next.dependsOn.includes(task.id)) continue;
-      const remaining = (indegree.get(next.id) ?? 0) - 1;
-      indegree.set(next.id, remaining);
+    const finished = task.id;
+    for (const next of templates.filter((candidate) => candidate.dependsOn.includes(finished))) {
+      const remaining = (waiting.get(next.id) ?? 0) - 1;
+      waiting.set(next.id, remaining);
       if (remaining === 0) queue.push(next);
     }
   }
@@ -95,6 +96,70 @@ export interface ScheduleInput {
   today: IsoDate;
 }
 
+interface ScheduleContext {
+  eventDate: IsoDate;
+  today: IsoDate;
+  /** Share of each ideal lead time that fits in the planning window (1 = no compression). */
+  factor: number;
+  progress: Readonly<Record<string, TaskProgress>>;
+  scheduled: ReadonlyMap<string, ScheduledTask>;
+  dependents: ReadonlyMap<string, string[]>;
+}
+
+/** The largest slip among unfinished upstream tasks, which this task inherits. */
+function inheritedSlip(template: TaskTemplate, scheduled: ReadonlyMap<string, ScheduledTask>) {
+  return Math.max(
+    0,
+    ...template.dependsOn.map((dep) => {
+      const upstream = scheduled.get(dep);
+      return upstream && !upstream.done ? upstream.slipDays : 0;
+    }),
+  );
+}
+
+/** Dates and state for one task. Its dependencies must already be in `context.scheduled`. */
+function scheduleTask(template: TaskTemplate, context: ScheduleContext): ScheduledTask {
+  const { eventDate, today, factor, scheduled } = context;
+  const saved = context.progress[template.id];
+  const done = saved?.done ?? false;
+  const delayDays = done ? 0 : (saved?.delayDays ?? 0);
+  const baseDue = addDays(eventDate, -Math.round(template.offsetDays * factor));
+  const slipDays = done ? 0 : Math.max(delayDays, inheritedSlip(template, scheduled));
+  const unclamped = addDays(baseDue, slipDays);
+  const due = minDate(unclamped, eventDate);
+  const blockedBy = template.dependsOn.filter((dep) => !(scheduled.get(dep)?.done ?? false));
+  const task: ScheduledTask = {
+    ...template,
+    baseDue,
+    due,
+    done,
+    delayDays,
+    slipDays,
+    squeezed: !done && diffDays(unclamped, eventDate) >= 0 && slipDays > 0,
+    state: 'upcoming',
+    blockedBy,
+    dependents: context.dependents.get(template.id) ?? [],
+    daysUntilDue: diffDays(due, today),
+  };
+  return { ...task, state: stateFor(task, today) };
+}
+
+function countByState(tasks: readonly ScheduledTask[]): Record<TaskState, number> {
+  const counts: Record<TaskState, number> = {
+    done: 0,
+    overdue: 0,
+    blocked: 0,
+    ready: 0,
+    upcoming: 0,
+  };
+  for (const task of tasks) counts[task.state] += 1;
+  return counts;
+}
+
+/**
+ * Back-schedules every task from the event date in dependency order. When there is less time than
+ * ideal, every lead time shrinks in proportion; delays move a task and everything that depends on it.
+ */
 export function buildSchedule({
   eventType,
   eventDate,
@@ -105,63 +170,21 @@ export function buildSchedule({
   const templates = topologicalOrder(TASK_TEMPLATES[eventType]);
   const ideal = idealLeadDays(eventType);
   // The window cannot start after the event, and an event that moved earlier shrinks the window.
-  const start = minDate(startDate, eventDate);
-  const planningDays = Math.max(0, diffDays(eventDate, start));
+  const planningDays = Math.max(0, diffDays(eventDate, minDate(startDate, eventDate)));
   const factor = Math.min(1, planningDays / ideal);
 
-  const scheduled = new Map<string, ScheduledTask>();
   const dependents = new Map<string, string[]>(templates.map((task) => [task.id, []]));
-  for (const task of templates)
+  for (const task of templates) {
     for (const dep of task.dependsOn) dependents.get(dep)?.push(task.id);
-
-  for (const template of templates) {
-    const state = progress[template.id];
-    const done = state?.done ?? false;
-    const delayDays = done ? 0 : (state?.delayDays ?? 0);
-    const baseDue = addDays(eventDate, -Math.round(template.offsetDays * factor));
-    const inheritedSlip = Math.max(
-      0,
-      ...template.dependsOn.map((dep) => {
-        const upstream = scheduled.get(dep);
-        return upstream && !upstream.done ? upstream.slipDays : 0;
-      }),
-    );
-    const slipDays = done ? 0 : Math.max(delayDays, inheritedSlip);
-    const unclamped = addDays(baseDue, slipDays);
-    const due = minDate(unclamped, eventDate);
-    const blockedBy = template.dependsOn.filter((dep) => !(scheduled.get(dep)?.done ?? false));
-    const task: ScheduledTask = {
-      ...template,
-      baseDue,
-      due,
-      done,
-      delayDays,
-      slipDays,
-      squeezed: !done && diffDays(unclamped, eventDate) >= 0 && slipDays > 0,
-      state: 'upcoming',
-      blockedBy,
-      dependents: dependents.get(template.id) ?? [],
-      daysUntilDue: diffDays(due, today),
-    };
-    task.state = stateFor(task, today);
-    scheduled.set(template.id, task);
   }
+  const scheduled = new Map<string, ScheduledTask>();
+  const context: ScheduleContext = { eventDate, today, factor, progress, scheduled, dependents };
+  for (const template of templates) scheduled.set(template.id, scheduleTask(template, context));
 
   const tasks = [...scheduled.values()].sort(
     (a, b) => diffDays(a.due, b.due) || PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority],
   );
-  const counts: Record<TaskState, number> = {
-    done: 0,
-    overdue: 0,
-    blocked: 0,
-    ready: 0,
-    upcoming: 0,
-  };
-  for (const task of tasks) counts[task.state] += 1;
-  const doNext = tasks
-    .filter((task) => !task.done && task.blockedBy.length === 0)
-    .slice(0, DO_NEXT_COUNT);
-
+  const counts = countByState(tasks);
   return {
     tasks,
     eventDate,
@@ -169,7 +192,9 @@ export function buildSchedule({
     idealLeadDays: ideal,
     planningDays,
     compressed: factor < 1,
-    doNext,
+    doNext: tasks
+      .filter((task) => !task.done && task.blockedBy.length === 0)
+      .slice(0, DO_NEXT_COUNT),
     counts,
     progressPct: Math.round((counts.done / tasks.length) * 100),
   };
@@ -189,7 +214,24 @@ export function downstreamOf(taskId: string, tasks: readonly ScheduledTask[]): s
   return [...seen];
 }
 
-/** Clamp helper used by the UI when the host picks a delay. */
+/** How many not-yet-done tasks move when `taskId` slips. */
+export function openDependentCount(taskId: string, tasks: readonly ScheduledTask[]): number {
+  const done = new Set(tasks.filter((task) => task.done).map((task) => task.id));
+  return downstreamOf(taskId, tasks).filter((id) => !done.has(id)).length;
+}
+
+/** Keeps a requested delay between 0 and `maxDays` whole days. */
 export function clampDelay(days: number, maxDays: number): number {
   return Math.min(Math.max(0, Math.round(days)), maxDays);
+}
+
+/** The schedule for a saved plan as of `today`. */
+export function scheduleFor(plan: PlanState, today: IsoDate): Schedule {
+  return buildSchedule({
+    eventType: plan.profile.eventType,
+    eventDate: plan.profile.eventDate,
+    startDate: plan.startDate,
+    progress: plan.progress,
+    today,
+  });
 }

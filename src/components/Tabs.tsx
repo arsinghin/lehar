@@ -16,9 +16,12 @@ interface TabsProps<T extends string> {
   idPrefix: string;
 }
 
+/** DOM id of a tab button, shared by the tab and its panel. */
 export const tabId = (prefix: string, id: string) => `${prefix}-tab-${id}`;
+/** DOM id of a tab panel. */
 export const panelId = (prefix: string, id: string) => `${prefix}-panel-${id}`;
 
+/** A tab list; Arrow, Home and End keys move between tabs. */
 export function Tabs<T extends string>({ label, items, active, onChange, idPrefix }: TabsProps<T>) {
   const refs = useRef(new Map<T, HTMLButtonElement>());
 
@@ -85,6 +88,7 @@ export function Tabs<T extends string>({ label, items, active, onChange, idPrefi
   );
 }
 
+/** The panel for the active tab, labelled by its tab. */
 export function TabPanel({
   idPrefix,
   id,

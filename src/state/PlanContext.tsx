@@ -10,8 +10,9 @@ import {
   type ReactNode,
 } from 'react';
 
-import { todayIso } from '../core/dates';
+import { todayIso, type IsoDate } from '../core/dates';
 import { derivePlan, type DerivedPlan } from '../core/plan';
+import type { PlanState } from '../core/schemas';
 import {
   isStorageWritable,
   loadStore,
@@ -27,8 +28,19 @@ interface PlanContextValue {
   state: StoreState;
   dispatch: Dispatch<StoreAction>;
   derived: DerivedPlan | null;
-  today: string;
+  today: IsoDate;
   storageIssue: StorageIssue;
+}
+
+export interface OpenPlanValue extends Omit<PlanContextValue, 'derived'> {
+  plan: PlanState;
+  derived: DerivedPlan;
+}
+
+export interface PlanProviderProps {
+  children: ReactNode;
+  /** Fixes "today" (tests and demos); defaults to the real date. */
+  today?: IsoDate;
 }
 
 const PlanContext = createContext<PlanContextValue | null>(null);
@@ -37,17 +49,19 @@ function initialState(result: LoadResult): StoreState {
   return result.status === 'loaded' ? result.store : EMPTY_STORE;
 }
 
-export function PlanProvider({
-  children,
-  today: fixedToday,
-}: {
-  children: ReactNode;
-  today?: string;
-}) {
+function storageIssueOf(loaded: LoadResult, writable: boolean): StorageIssue {
+  if (loaded.status === 'unavailable' || !writable) return 'unavailable';
+  return loaded.status === 'invalid' ? 'invalid' : 'none';
+}
+
+/** Loads the saved plan once, keeps it saved, and provides the store and the derived plan. */
+export function PlanProvider({ children, today: fixedToday }: PlanProviderProps) {
   const [boot] = useState(() => {
     const storage = safeLocalStorage();
-    return { loaded: loadStore(storage), writable: isStorageWritable(storage) };
+    const loaded = loadStore(storage);
+    return { loaded, storageIssue: storageIssueOf(loaded, isStorageWritable(storage)) };
   });
+  const { storageIssue } = boot;
   const [state, dispatch] = useReducer(storeReducer, boot.loaded, initialState);
   const today = fixedToday ?? todayIso();
 
@@ -60,13 +74,6 @@ export function PlanProvider({
     () => (state.plan ? derivePlan(state.plan, today) : null),
     [state.plan, today],
   );
-  const storageIssue: StorageIssue =
-    boot.loaded.status === 'unavailable' || !boot.writable
-      ? 'unavailable'
-      : boot.loaded.status === 'invalid'
-        ? 'invalid'
-        : 'none';
-
   const value = useMemo(
     () => ({ state, dispatch, derived, today, storageIssue }),
     [state, derived, today, storageIssue],
@@ -74,6 +81,7 @@ export function PlanProvider({
   return <PlanContext value={value}>{children}</PlanContext>;
 }
 
+/** The store, whether or not a plan is open. */
 export function usePlanStore(): PlanContextValue {
   const context = use(PlanContext);
   if (!context) throw new Error('usePlanStore must be used inside <PlanProvider>');
@@ -81,12 +89,8 @@ export function usePlanStore(): PlanContextValue {
 }
 
 /** For screens that only render with an open plan. */
-export function useOpenPlan() {
+export function useOpenPlan(): OpenPlanValue {
   const { state, derived, ...rest } = usePlanStore();
   if (!state.plan || !derived) throw new Error('No plan is open');
   return { ...rest, state, plan: state.plan, derived };
-}
-
-export function nowIso(): string {
-  return new Date().toISOString();
 }

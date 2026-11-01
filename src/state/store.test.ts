@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { plan, quote, TODAY } from '../../tests/fixtures';
-import { createDemoPlan } from '../core/plan';
+import { createDemoPlan } from '../core/demo';
 import {
   isStorageWritable,
   loadStore,

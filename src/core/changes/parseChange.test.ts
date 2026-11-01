@@ -2,23 +2,19 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { TODAY } from '../../../tests/fixtures';
-import { CHANGE_TEST_TEXT } from '../plan';
+import { SAMPLE_CHANGE_TEXT } from '../demo';
 import { changesFromAiOutput } from './aiChange';
-import {
-  normaliseNumbers,
-  parseChangeText,
-  parseExplicitDate,
-  resolveChanges,
-  splitClauses,
-  type Change,
-} from './parseChange';
+import { parseExplicitDate } from './explicitDate';
+import { parseChangeText, type Change } from './parseChange';
+import { resolveChanges } from './resolveChanges';
+import { normalizeNumbers, splitClauses } from './text';
 
 const parse = (text: string) => parseChangeText(text, TODAY).changes;
 const context = { guests: 200, budget: 800_000, eventDate: '2027-02-23', today: TODAY };
 
 describe('a combined change', () => {
   it('understands "50 more guests, budget down 10%, 2 weeks earlier" in one sentence', () => {
-    expect(parse(CHANGE_TEST_TEXT)).toEqual<Change[]>([
+    expect(parse(SAMPLE_CHANGE_TEXT)).toEqual<Change[]>([
       { kind: 'guests', mode: 'delta', value: 50 },
       { kind: 'budget', mode: 'percent', value: -10 },
       { kind: 'date', mode: 'shift', days: -14 },
@@ -26,7 +22,7 @@ describe('a combined change', () => {
   });
 
   it('resolves to a validated patch with readable summaries', () => {
-    const resolved = resolveChanges(parse(CHANGE_TEST_TEXT), context);
+    const resolved = resolveChanges(parse(SAMPLE_CHANGE_TEXT), context);
     expect(resolved.patch).toEqual({ guests: 250, budget: 720_000, eventDate: '2027-02-09' });
     expect(resolved.summary).toEqual([
       'Guests: 200 → 250',
@@ -152,8 +148,8 @@ describe('parser robustness', () => {
     );
   });
 
-  it('normalises number words and splits clauses without breaking amounts', () => {
-    expect(normaliseNumbers('Fifty-five more, a week, a couple of days, two hundred')).toBe(
+  it('normalizes number words and splits clauses without breaking amounts', () => {
+    expect(normalizeNumbers('Fifty-five more, a week, a couple of days, two hundred')).toBe(
       '55 more, 1 week, 2 days, 200',
     );
     expect(splitClauses('budget is 7,00,000. and 7.5 lakh, then')).toEqual([

@@ -7,19 +7,30 @@
  */
 import * as z from 'zod/mini';
 
+import { CATEGORIES, EVENT_TYPES, TIERS } from './constants/enums.js';
 import {
-  ACCESS_NEEDS,
-  AGE_GROUPS,
-  CATEGORIES,
-  DIETS,
-  EVENT_TYPES,
-  TIERS,
-} from './constants/enums.js';
-import { LIMITS } from './constants/limits.js';
-import { AiSourceSchema, IdeaSchema, IsoDateSchema } from './schemas.js';
+  IDEA_TEXT_LIMITS,
+  IDEAS_PER_SET,
+  LIMITS,
+  VENDOR_QUESTION_LIMITS,
+} from './constants/limits.js';
+import {
+  AccessNeedsSchema,
+  AgeGroupsSchema,
+  AiSourceSchema,
+  boundedText as text,
+  DietsSchema,
+  IdeaSchema,
+  IsoDateSchema,
+  wholeNumber as int,
+} from './schemas.js';
 
-const text = (max: number) => z.string().check(z.trim(), z.maxLength(max));
-const int = (min: number, max: number) => z.number().check(z.int(), z.gte(min), z.lte(max));
+/** Range of budget changes, in percent, that the AI may report. */
+const MAX_BUDGET_PERCENT_UP = 500;
+const MAX_BUDGET_PERCENT_DOWN = -90;
+const MAX_MODEL_NAME = 80;
+const MAX_REQUEST_ID = 64;
+const MAX_ERROR_MESSAGE = 300;
 
 export const BUDGET_BANDS = ['tight', 'moderate', 'comfortable'] as const;
 export type BudgetBand = (typeof BUDGET_BANDS)[number];
@@ -31,12 +42,12 @@ export const IdeaContextSchema = z.strictObject({
   budgetBand: z.enum(BUDGET_BANDS),
   month: int(1, 12),
   city: text(LIMITS.maxCity),
-  ageGroups: z.array(z.enum(AGE_GROUPS)).check(z.maxLength(AGE_GROUPS.length)),
-  diets: z.array(z.enum(DIETS)).check(z.maxLength(DIETS.length)),
-  accessNeeds: z.array(z.enum(ACCESS_NEEDS)).check(z.maxLength(ACCESS_NEEDS.length)),
+  ageGroups: AgeGroupsSchema,
+  diets: DietsSchema,
+  accessNeeds: AccessNeedsSchema,
   culture: text(LIMITS.maxCulture),
   mustHaves: z.array(text(LIMITS.maxMustHaveLength)).check(z.maxLength(LIMITS.maxMustHaves)),
-  topPriorities: z.array(z.enum(CATEGORIES)).check(z.maxLength(3)),
+  topPriorities: z.array(z.enum(CATEGORIES)).check(z.maxLength(LIMITS.maxTopPriorities)),
 });
 export type IdeaContext = z.infer<typeof IdeaContextSchema>;
 
@@ -45,7 +56,7 @@ export const IdeasRequestSchema = z.strictObject({
   context: IdeaContextSchema,
   refine: z.optional(
     z.strictObject({
-      ideaTitle: text(70),
+      ideaTitle: text(IDEA_TEXT_LIMITS.title),
       instruction: text(LIMITS.maxRefineText).check(z.minLength(2)),
     }),
   ),
@@ -70,9 +81,9 @@ export const VendorQuestionsRequestSchema = z.strictObject({
     eventType: z.enum(EVENT_TYPES),
     guests: int(LIMITS.minGuests, LIMITS.maxGuests),
     tier: z.enum(TIERS),
-    ageGroups: z.array(z.enum(AGE_GROUPS)).check(z.maxLength(AGE_GROUPS.length)),
-    diets: z.array(z.enum(DIETS)).check(z.maxLength(DIETS.length)),
-    accessNeeds: z.array(z.enum(ACCESS_NEEDS)).check(z.maxLength(ACCESS_NEEDS.length)),
+    ageGroups: AgeGroupsSchema,
+    diets: DietsSchema,
+    accessNeeds: AccessNeedsSchema,
   }),
 });
 
@@ -86,11 +97,13 @@ export type IdeasRequest = z.infer<typeof IdeasRequestSchema>;
 export type ParseChangeRequest = z.infer<typeof ParseChangeRequestSchema>;
 export type VendorQuestionsRequest = z.infer<typeof VendorQuestionsRequestSchema>;
 export type AiTask = AiRequest['task'];
+/** The request for one task. The `task` member keeps the key and the request paired in generics. */
+export type TaskRequest<T extends AiTask> = Extract<AiRequest, { task: T }> & { task: T };
 
 /* ---------- Model output schemas (also sent to the model as the JSON schema) ---------- */
 
 export const IdeasOutputSchema = z.strictObject({
-  ideas: z.array(IdeaSchema).check(z.minLength(1), z.maxLength(3)),
+  ideas: z.array(IdeaSchema).check(z.minLength(1), z.maxLength(IDEAS_PER_SET)),
 });
 export type IdeasOutput = z.infer<typeof IdeasOutputSchema>;
 
@@ -100,15 +113,19 @@ export const ParseChangeOutputSchema = z.strictObject({
   guestsSet: z.optional(int(LIMITS.minGuests, LIMITS.maxGuests)),
   budgetDelta: z.optional(int(-LIMITS.maxBudget, LIMITS.maxBudget)),
   budgetSet: z.optional(int(LIMITS.minBudget, LIMITS.maxBudget)),
-  budgetPercent: z.optional(z.number().check(z.gte(-90), z.lte(500))),
+  budgetPercent: z.optional(
+    z.number().check(z.gte(MAX_BUDGET_PERCENT_DOWN), z.lte(MAX_BUDGET_PERCENT_UP)),
+  ),
   dateShiftDays: z.optional(int(-LIMITS.maxHorizonDays, LIMITS.maxHorizonDays)),
   dateSet: z.optional(IsoDateSchema),
-  clarification: z.optional(text(200)),
+  clarification: z.optional(text(LIMITS.maxClarification)),
 });
 export type ParseChangeOutput = z.infer<typeof ParseChangeOutputSchema>;
 
 export const VendorQuestionsOutputSchema = z.strictObject({
-  questions: z.array(text(200).check(z.minLength(5))).check(z.minLength(1), z.maxLength(6)),
+  questions: z
+    .array(text(VENDOR_QUESTION_LIMITS.maxLength).check(z.minLength(1)))
+    .check(z.minLength(1), z.maxLength(VENDOR_QUESTION_LIMITS.maxPerAnswer)),
 });
 export type VendorQuestionsOutput = z.infer<typeof VendorQuestionsOutputSchema>;
 
@@ -118,11 +135,11 @@ export interface AiOutputByTask {
   vendorQuestions: VendorQuestionsOutput;
 }
 
-export const AI_OUTPUT_SCHEMAS = {
+export const AI_OUTPUT_SCHEMAS: { readonly [T in AiTask]: z.ZodMiniType<AiOutputByTask[T]> } = {
   ideas: IdeasOutputSchema,
   parseChange: ParseChangeOutputSchema,
   vendorQuestions: VendorQuestionsOutputSchema,
-} as const;
+};
 
 /* ---------- Response envelope ---------- */
 
@@ -141,41 +158,22 @@ export type AiErrorCode = z.infer<typeof AiErrorCodeSchema>;
 
 export const AiMetaSchema = z.strictObject({
   source: AiSourceSchema,
-  model: z.nullable(text(80)),
+  model: z.nullable(text(MAX_MODEL_NAME)),
   cached: z.boolean(),
-  requestId: text(64),
+  requestId: text(MAX_REQUEST_ID),
 });
 export type AiMeta = z.infer<typeof AiMetaSchema>;
 
 export const AiErrorBodySchema = z.strictObject({
   ok: z.literal(false),
-  error: z.strictObject({ code: AiErrorCodeSchema, message: text(300) }),
-  requestId: text(64),
+  error: z.strictObject({ code: AiErrorCodeSchema, message: text(MAX_ERROR_MESSAGE) }),
+  requestId: text(MAX_REQUEST_ID),
 });
+export type AiErrorBody = z.infer<typeof AiErrorBodySchema>;
 
 export interface AiSuccessBody<T extends AiTask> {
   ok: true;
   task: T;
   data: AiOutputByTask[T];
   meta: AiMeta;
-}
-
-/** Rupees-per-guest thresholds separating tight / moderate / comfortable budgets. */
-const BAND_THRESHOLDS: Record<(typeof EVENT_TYPES)[number], readonly [number, number]> = {
-  wedding: [2_500, 6_000],
-  birthday: [1_200, 3_000],
-  community: [400, 1_200],
-};
-
-/** Budget band from rupees per guest, so the model sees the "feel" of the budget and not the amount. */
-export function budgetBand(
-  budget: number,
-  guests: number,
-  eventType: (typeof EVENT_TYPES)[number],
-): BudgetBand {
-  const perGuest = budget / Math.max(1, guests);
-  const [tightBelow, comfortableFrom] = BAND_THRESHOLDS[eventType];
-  if (perGuest < tightBelow) return 'tight';
-  if (perGuest < comfortableFrom) return 'moderate';
-  return 'comfortable';
 }

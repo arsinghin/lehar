@@ -5,6 +5,7 @@ import { applyProfilePatch, type ProfilePatch } from '../../core/profile';
 import type { PlanState } from '../../core/schemas';
 import type { NoticeMessage } from '../../components/Notice';
 
+/** "over budget by ₹…" or "₹… left". */
 export function standing(summary: BudgetSummary): string {
   if (summary.gap > 0) return `over budget by ${formatInr(summary.gap)}`;
   return `${formatInr(-summary.gap)} left`;
@@ -17,6 +18,7 @@ export function rippleMessage(plan: PlanState, patch: ProfilePatch, what: string
   return rippleFromSummaries(before, after, what);
 }
 
+/** The ripple message for a change between two budget summaries. */
 export function rippleFromSummaries(
   before: BudgetSummary,
   after: BudgetSummary,

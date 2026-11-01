@@ -56,3 +56,28 @@ style, and an e2e test runs the app under the production CSP.
 **Decision.** Updates happen manually on `main`.
 **Why.** A small project with one maintainer stays simplest with a linear history on `main`. Dependency
 updates are reviewed by hand, and `npm audit` runs in CI.
+
+### ADR-9: One source of truth, enforced by lint
+
+**Decision.** Each rule has one implementation, shared by the browser and the server:
+
+- limits and validation messages;
+- the change conversion in both directions;
+- fallbacks.
+
+Lint fails on functions that are too complex or too long, and the tests sit next to the code
+they cover.
+
+**Why.** Duplicated rules drift apart: the browser and the server once gave different fallback
+vendor questions. Size limits keep every function readable on one screen, and colocated tests make
+it obvious what is covered.
+
+**Trade-off.** More, smaller files. Data-only constant files are exempt from the file-size limit.
+
+### ADR-10: Late AI answers are dropped, not applied
+
+**Decision.** AI actions record which request is current. An answer that arrives after a newer request,
+or after the plan it was computed for has changed, is discarded with a notice.
+
+**Why.** Free endpoints can take 20 seconds or more. Without this guard, a slow answer for the old text
+or old profile could overwrite a newer one.

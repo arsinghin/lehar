@@ -22,8 +22,6 @@ export const TIER_MULTIPLIER: Record<Tier, number> = {
   premium: 1.7,
 };
 
-export const TIER_ORDER: readonly Tier[] = ['simple', 'standard', 'premium'];
-
 /** A 10 % buffer for the surprises every Indian celebration has. */
 export const DEFAULT_CONTINGENCY_PCT = 10;
 /** Below this, trade-offs never suggest cutting the buffer further. */

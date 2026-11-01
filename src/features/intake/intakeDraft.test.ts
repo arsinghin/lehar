@@ -7,7 +7,6 @@ import {
   draftToProfile,
   FIELD_IDS,
   initialDraft,
-  parseGuests,
   parseMustHaves,
   validateAll,
   validateStep,
@@ -101,8 +100,6 @@ describe('intake draft', () => {
   });
 
   it('parses helpers', () => {
-    expect(parseGuests(' 1,250 ')).toBe(1250);
-    expect(parseGuests('-3')).toBeNull();
     expect(parseMustHaves('a; b\n\n c ,')).toEqual(['a', 'b', 'c']);
     expect(budgetPreview('8 lakh')).toBe('= ₹8,00,000');
     expect(budgetPreview('lots')).toBeNull();

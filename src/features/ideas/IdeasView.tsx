@@ -1,55 +1,38 @@
-import { useState } from 'react';
-
-import { Alert, Badge, SourceBadge } from '../../components/Badge';
+import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { TextField } from '../../components/Field';
-import { useNotify } from '../../components/Notice';
 import { toIdeaContext } from '../../core/aiContext';
-import { LIMITS } from '../../core/constants/limits';
-import type { Idea } from '../../core/schemas';
-import { AiInputError, fetchIdeas } from '../../lib/aiActions';
+import { IDEAS_PER_SET } from '../../core/constants/limits';
+import { fetchIdeas } from '../../lib/aiActions';
 import { useOpenPlan } from '../../state/PlanContext';
+import { actions } from '../../state/store';
+import { SourceBadge } from '../shared/StatusBadges';
+import { useAiAction } from '../shared/useAiAction';
+import { IdeaCard } from './IdeaCard';
 
-const REFINEMENTS = [
-  { label: 'Cheaper', instruction: 'Make it cheaper without losing the feel' },
-  { label: 'Kid-friendly', instruction: 'Make it work well for young children' },
-  { label: 'Elder-friendly', instruction: 'Make it comfortable for elderly family members' },
-  { label: 'More traditional', instruction: 'Make it more traditional' },
-  { label: 'Eco-friendly', instruction: 'Make it eco-friendly and low-waste' },
-] as const;
+const NEW_IDEAS = 'new';
+const refineKey = (index: number) => `refine-${String(index)}`;
 
-const COST_TEXT = { lower: 'Lower cost', similar: 'Similar cost', higher: 'Higher cost' } as const;
-
+/** Personalised ideas from the AI (or built-in ones offline), each refinable in one click. */
 export function IdeasView() {
-  const { plan, dispatch } = useOpenPlan();
-  const notify = useNotify();
-  const [busy, setBusy] = useState<string | null>(null);
+  const { plan } = useOpenPlan();
+  const ai = useAiAction();
   const ideas = plan.ideas;
 
-  const run = async (key: string, refine?: { ideaTitle: string; instruction: string }) => {
-    setBusy(key);
-    try {
-      const outcome = await fetchIdeas(plan.profile, refine);
-      dispatch({ type: 'ideas/set', ideas: outcome.value });
-      notify(
-        outcome.notice
-          ? { tone: 'info', text: outcome.notice }
-          : {
-              tone: 'ok',
-              text: refine
-                ? `Refined: “${refine.instruction}”.`
-                : 'Here are three ideas for your event.',
-            },
-      );
-    } catch (error) {
-      notify({
-        tone: 'danger',
-        text: error instanceof AiInputError ? error.message : 'Could not get ideas right now.',
-      });
-    } finally {
-      setBusy(null);
-    }
-  };
+  const suggest = () =>
+    ai.run(NEW_IDEAS, {
+      request: () => fetchIdeas(plan.profile),
+      save: actions.setIdeas,
+      success: 'Here are three ideas for your event.',
+      failure: 'Could not get ideas right now.',
+    });
+
+  const refine = (index: number, ideaTitle: string, instruction: string) =>
+    ai.run(refineKey(index), {
+      request: () => fetchIdeas(plan.profile, { ideaTitle, instruction }),
+      save: actions.setIdeas,
+      success: `Refined: “${instruction}”.`,
+      failure: 'Could not get ideas right now.',
+    });
 
   return (
     <div className="stack-l">
@@ -67,11 +50,13 @@ export function IdeasView() {
           <Button
             variant={ideas ? 'secondary' : 'primary'}
             icon="sparkle"
-            busy={busy === 'new'}
-            disabled={busy !== null}
-            onClick={() => void run('new')}
+            busy={ai.pending === NEW_IDEAS}
+            disabled={ai.pending !== null}
+            onClick={() => void suggest()}
           >
-            {ideas ? 'Start over with new ideas' : 'Suggest 3 ideas for my event'}
+            {ideas
+              ? 'Start over with new ideas'
+              : `Suggest ${String(IDEAS_PER_SET)} ideas for my event`}
           </Button>
         </div>
         {ideas?.refinedWith ? (
@@ -80,16 +65,14 @@ export function IdeasView() {
       </section>
 
       {ideas ? (
-        <ul className="idea-grid" aria-busy={busy !== null}>
+        <ul className="idea-grid" aria-busy={ai.pending !== null}>
           {ideas.items.map((idea, index) => (
             <IdeaCard
               key={`${idea.title}-${String(index)}`}
               idea={idea}
-              index={index}
-              busyKey={busy}
-              onRefine={(instruction) =>
-                void run(`refine-${String(index)}`, { ideaTitle: idea.title, instruction })
-              }
+              busy={ai.pending === refineKey(index)}
+              disabled={ai.pending !== null}
+              onRefine={(instruction) => void refine(index, idea.title, instruction)}
             />
           ))}
         </ul>
@@ -113,116 +96,5 @@ export function IdeasView() {
         </Alert>
       ) : null}
     </div>
-  );
-}
-
-function IdeaCard({
-  idea,
-  index,
-  busyKey,
-  onRefine,
-}: {
-  idea: Idea;
-  index: number;
-  busyKey: string | null;
-  onRefine: (instruction: string) => void;
-}) {
-  const [custom, setCustom] = useState('');
-  const [error, setError] = useState<string | undefined>();
-  const headingId = `idea-${String(index)}`;
-  const busy = busyKey === `refine-${String(index)}`;
-
-  return (
-    <li className="card idea" aria-labelledby={headingId}>
-      <div className="card__title">
-        <h3 id={headingId}>{idea.title}</h3>
-        <Badge
-          tone={
-            idea.costLevel === 'lower' ? 'ok' : idea.costLevel === 'higher' ? 'warn' : 'neutral'
-          }
-        >
-          {COST_TEXT[idea.costLevel]}
-        </Badge>
-      </div>
-      <p>{idea.summary}</p>
-      <dl className="idea__details">
-        {idea.decor ? (
-          <div>
-            <dt>Decor</dt>
-            <dd>{idea.decor}</dd>
-          </div>
-        ) : null}
-        {idea.food ? (
-          <div>
-            <dt>Food</dt>
-            <dd>{idea.food}</dd>
-          </div>
-        ) : null}
-        {idea.activity ? (
-          <div>
-            <dt>Activity</dt>
-            <dd>{idea.activity}</dd>
-          </div>
-        ) : null}
-      </dl>
-      {idea.whyItFits ? (
-        <p className="small">
-          <strong>Why it fits:</strong> {idea.whyItFits}
-        </p>
-      ) : null}
-      <fieldset className="refine">
-        <legend className="small">Refine “{idea.title}”</legend>
-        <div className="row">
-          {REFINEMENTS.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              className="chip"
-              disabled={busyKey !== null}
-              onClick={() => {
-                onRefine(item.instruction);
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <form
-          className="row refine__custom"
-          noValidate
-          onSubmit={(event) => {
-            event.preventDefault();
-            const text = custom.trim();
-            if (text.length < 2) {
-              setError('Describe what you would like to change.');
-              return;
-            }
-            setError(undefined);
-            onRefine(text);
-          }}
-        >
-          <TextField
-            label="Or say what to change"
-            hideLabel
-            placeholder="For example: we have no stage, keep it outdoors"
-            maxLength={LIMITS.maxRefineText}
-            value={custom}
-            error={error}
-            onChange={(event) => {
-              setCustom(event.target.value);
-            }}
-          />
-          <Button
-            aria-label={`Refine ${idea.title}`}
-            type="submit"
-            size="s"
-            busy={busy}
-            disabled={busyKey !== null}
-          >
-            Refine
-          </Button>
-        </form>
-      </fieldset>
-    </li>
   );
 }

@@ -36,6 +36,10 @@ export class ProviderError extends Error {
   }
 }
 
+/**
+ * Any thrown value as a ProviderError. Messages from our own ProviderErrors are kept; anything else
+ * (SDK or network errors) is reduced to its status, because its text can echo request content.
+ */
 export function toProviderError(error: unknown): ProviderError {
   if (error instanceof ProviderError) return error;
   if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
@@ -43,6 +47,6 @@ export function toProviderError(error: unknown): ProviderError {
   }
   const status =
     typeof error === 'object' && error !== null && 'status' in error ? Number(error.status) : NaN;
-  const message = error instanceof Error ? error.message : 'Provider failed';
-  return new ProviderError(message.slice(0, 200), Number.isFinite(status) ? status : null);
+  if (!Number.isFinite(status)) return new ProviderError('Provider failed');
+  return new ProviderError(`Provider HTTP ${String(status)}`, status);
 }

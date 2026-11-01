@@ -1,3 +1,4 @@
+/** The /api/health body: whether each provider is configured, and its model ids. Never key values. */
 import type { ServerConfig } from './config.js';
 
 export interface HealthBody {
@@ -6,13 +7,17 @@ export interface HealthBody {
   models: { gemini: string[]; openRouter: string[]; nvidia: string[] };
 }
 
+const isConfigured = (provider: { apiKey: string | null; models: readonly string[] }) =>
+  provider.apiKey !== null && provider.models.length > 0;
+
+/** The /api/health body for a configuration. */
 export function healthBody(config: ServerConfig): HealthBody {
   return {
     ok: true,
     ai: {
-      gemini: config.gemini.apiKey !== null && config.gemini.models.length > 0,
-      openRouter: config.openRouter.apiKey !== null && config.openRouter.models.length > 0,
-      nvidia: config.nvidia.apiKey !== null && config.nvidia.models.length > 0,
+      gemini: isConfigured(config.gemini),
+      openRouter: isConfigured(config.openRouter),
+      nvidia: isConfigured(config.nvidia),
       fallback: 'rules',
     },
     models: {

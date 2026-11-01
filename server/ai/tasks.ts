@@ -1,12 +1,18 @@
 /**
- * The task registry: one entry per AI task, holding its prompt, output schema, sanitiser and the
- * deterministic fallback used when every provider fails. Adding a task means adding an entry here.
+ * The task registry: one entry per AI task, holding its prompt, output schema, sanitizer and the
+ * deterministic fallback used when every provider fails. Adding a task means adding an entry here
+ * and a case in `withTaskSpec`.
  */
 import * as z from 'zod/mini';
 
-import { changesFromAiOutput } from '../../src/core/changes/aiChange.js';
-import { parseChangeText, type Change } from '../../src/core/changes/parseChange.js';
-import { VENDOR_PROFILES } from '../../src/core/constants/vendors.js';
+import { changesFromAiOutput, changesToOutput } from '../../src/core/changes/aiChange.js';
+import { parseChangeText } from '../../src/core/changes/parseChange.js';
+import {
+  IDEA_TEXT_FIELDS,
+  IDEA_TEXT_LIMITS,
+  LIMITS,
+  VENDOR_QUESTION_LIMITS,
+} from '../../src/core/constants/limits.js';
 import {
   IdeasOutputSchema,
   ParseChangeOutputSchema,
@@ -14,12 +20,12 @@ import {
   type AiOutputByTask,
   type AiRequest,
   type AiTask,
-  type IdeasRequest,
   type ParseChangeOutput,
-  type ParseChangeRequest,
-  type VendorQuestionsRequest,
+  type TaskRequest,
 } from '../../src/core/contract.js';
 import { generateFallbackIdeas } from '../../src/core/ideas.js';
+import type { Idea } from '../../src/core/schemas.js';
+import { fallbackVendorQuestions } from '../../src/core/vendors.js';
 import { sanitizeModelText } from '../security/sanitize.js';
 import {
   ideasPrompt,
@@ -28,9 +34,10 @@ import {
   vendorQuestionsPrompt,
 } from './prompts.js';
 
-type RequestFor<T extends AiTask> = Extract<AiRequest, { task: T }>;
+export type RequestFor<T extends AiTask> = TaskRequest<T>;
 
 export interface TaskSpec<T extends AiTask> {
+  /** Part of the cache key, so changing a prompt never serves answers to the old one. */
   promptVersion: string;
   maxOutputTokens: number;
   jsonSchema: Record<string, unknown>;
@@ -38,15 +45,23 @@ export interface TaskSpec<T extends AiTask> {
   buildPrompt(request: RequestFor<T>): string;
   /** Free-text fields that are screened for prompt injection. */
   userText(request: RequestFor<T>): string[];
-  /** Sanitises validated output. Returns null when nothing usable is left. */
+  /** Sanitizes validated output. Returns null when nothing usable is left. */
   postProcess(output: AiOutputByTask[T]): AiOutputByTask[T] | null;
   fallback(request: RequestFor<T>): AiOutputByTask[T];
 }
 
 /** JSON Schema for the model, without the $schema key that some providers reject. */
 export function toModelJsonSchema(schema: z.ZodMiniType): Record<string, unknown> {
-  const { $schema: _ignored, ...rest } = z.toJSONSchema(schema) as Record<string, unknown>;
+  const { $schema: _ignored, ...rest }: Record<string, unknown> = z.toJSONSchema(schema);
   return rest;
+}
+
+function sanitizeIdea(idea: Idea): Idea {
+  const clean = { ...idea };
+  for (const field of IDEA_TEXT_FIELDS) {
+    clean[field] = sanitizeModelText(idea[field], IDEA_TEXT_LIMITS[field]);
+  }
+  return clean;
 }
 
 const ideas: TaskSpec<'ideas'> = {
@@ -55,22 +70,14 @@ const ideas: TaskSpec<'ideas'> = {
   jsonSchema: toModelJsonSchema(IdeasOutputSchema),
   outputSchema: IdeasOutputSchema,
   buildPrompt: ideasPrompt,
-  userText: (request: IdeasRequest) => [
+  userText: (request) => [
     request.context.culture,
     ...request.context.mustHaves,
     request.refine?.instruction ?? '',
   ],
   postProcess(output) {
     const cleaned = output.ideas
-      .map((idea) => ({
-        ...idea,
-        title: sanitizeModelText(idea.title, 70),
-        summary: sanitizeModelText(idea.summary, 260),
-        decor: sanitizeModelText(idea.decor, 200),
-        food: sanitizeModelText(idea.food, 200),
-        activity: sanitizeModelText(idea.activity, 200),
-        whyItFits: sanitizeModelText(idea.whyItFits, 240),
-      }))
+      .map(sanitizeIdea)
       .filter((idea) => idea.title.length > 0 && idea.summary.length > 0);
     return cleaned.length > 0 ? { ideas: cleaned } : null;
   },
@@ -79,44 +86,17 @@ const ideas: TaskSpec<'ideas'> = {
   }),
 };
 
-const CHANGE_HELP =
-  'I could not work out the change. Try “50 more guests”, “budget is now 7 lakh” or “2 weeks earlier”.';
-
-/** Converts deterministic parser output into the flat AI output shape. */
-export function changesToOutput(
-  changes: readonly Change[],
-  clarifications: readonly string[],
-): ParseChangeOutput {
-  const output: ParseChangeOutput = {};
-  for (const change of changes) {
-    if (change.kind === 'guests') {
-      if (change.mode === 'set') output.guestsSet = change.value;
-      else output.guestsDelta = change.value;
-    } else if (change.kind === 'budget') {
-      if (change.mode === 'set') output.budgetSet = change.value;
-      else if (change.mode === 'percent') output.budgetPercent = change.value;
-      else output.budgetDelta = change.value;
-    } else if (change.mode === 'set') output.dateSet = change.date;
-    else output.dateShiftDays = change.days;
-  }
-  if (changes.length === 0) output.clarification = clarifications[0] ?? CHANGE_HELP;
-  return output;
-}
-
 const parseChange: TaskSpec<'parseChange'> = {
   promptVersion: PROMPT_VERSIONS.parseChange,
   maxOutputTokens: 300,
   jsonSchema: toModelJsonSchema(ParseChangeOutputSchema),
   outputSchema: ParseChangeOutputSchema,
   buildPrompt: parseChangePrompt,
-  userText: (request: ParseChangeRequest) => [request.text],
+  userText: (request) => [request.text],
   postProcess(output) {
-    const clarification = output.clarification
-      ? sanitizeModelText(output.clarification, 200)
-      : undefined;
-    const result: ParseChangeOutput = { ...output };
-    if (clarification) result.clarification = clarification;
-    else delete result.clarification;
+    const { clarification, ...fields } = output;
+    const cleaned = clarification ? sanitizeModelText(clarification, LIMITS.maxClarification) : '';
+    const result: ParseChangeOutput = cleaned ? { ...fields, clarification: cleaned } : fields;
     const understood = changesFromAiOutput(result);
     return understood.changes.length > 0 || understood.clarifications.length > 0 ? result : null;
   },
@@ -126,11 +106,18 @@ const parseChange: TaskSpec<'parseChange'> = {
   },
 };
 
-const GENERIC_QUESTIONS = [
-  'What exactly is included in the price, and what costs extra?',
-  'What advance is needed, and what is the cancellation policy?',
-  'What do you need from us, and by when?',
-];
+/** Sanitized, de-duplicated questions; fragments shorter than a real question are dropped. */
+function cleanQuestions(questions: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return questions
+    .map((question) => sanitizeModelText(question, VENDOR_QUESTION_LIMITS.maxLength))
+    .filter((question) => {
+      const key = question.toLowerCase();
+      if (question.length < VENDOR_QUESTION_LIMITS.minLength || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
 
 const vendorQuestions: TaskSpec<'vendorQuestions'> = {
   promptVersion: PROMPT_VERSIONS.vendorQuestions,
@@ -140,20 +127,29 @@ const vendorQuestions: TaskSpec<'vendorQuestions'> = {
   buildPrompt: vendorQuestionsPrompt,
   userText: () => [],
   postProcess(output) {
-    const seen = new Set<string>();
-    const questions = output.questions
-      .map((question) => sanitizeModelText(question, 200))
-      .filter((question) => {
-        const key = question.toLowerCase();
-        if (question.length < 10 || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+    const questions = cleanQuestions(output.questions);
     return questions.length > 0 ? { questions } : null;
   },
-  fallback: (request: VendorQuestionsRequest) => ({
-    questions: [...(VENDOR_PROFILES[request.category]?.questions ?? GENERIC_QUESTIONS)].slice(0, 5),
-  }),
+  fallback: (request) => ({ questions: fallbackVendorQuestions(request.category) }),
 };
 
-export const TASKS: { [T in AiTask]: TaskSpec<T> } = { ideas, parseChange, vendorQuestions };
+export const TASKS: { readonly [T in AiTask]: TaskSpec<T> } = {
+  ideas,
+  parseChange,
+  vendorQuestions,
+};
+
+/** Runs `use` with a request and the spec for its task, keeping the two types paired without casts. */
+export function withTaskSpec<R>(
+  request: AiRequest,
+  use: <T extends AiTask>(spec: TaskSpec<T>, request: RequestFor<T>) => R,
+): R {
+  switch (request.task) {
+    case 'ideas':
+      return use(TASKS.ideas, request);
+    case 'parseChange':
+      return use(TASKS.parseChange, request);
+    case 'vendorQuestions':
+      return use(TASKS.vendorQuestions, request);
+  }
+}

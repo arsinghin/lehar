@@ -103,3 +103,10 @@ export const VENDOR_PROFILES: Partial<Record<Category, VendorProfile>> = {
     ],
   },
 };
+
+/** Asked of any vendor whose category has no checklist of its own. */
+export const GENERIC_VENDOR_QUESTIONS: readonly string[] = [
+  'What exactly is included in the price, and what costs extra?',
+  'What advance is needed, and what is the cancellation policy?',
+  'What do you need from us, and by when?',
+];

@@ -14,31 +14,21 @@ export interface LogFields {
   count?: number;
 }
 
-export interface Logger {
-  info(event: string, fields?: LogFields): void;
-  warn(event: string, fields?: LogFields): void;
-}
+export type LogLevel = 'info' | 'warn' | 'error';
 
-interface Sink {
-  info(message: string): void;
-  warn(message: string): void;
-}
+export type Logger = Record<LogLevel, (event: string, fields?: LogFields) => void>;
 
+type Sink = Record<LogLevel, (message: string) => void>;
+
+/** One JSON line per event, at the matching console level. */
 export function createLogger(sink: Sink = console): Logger {
-  const write = (level: 'info' | 'warn', event: string, fields: LogFields = {}) => {
-    sink[level](JSON.stringify({ level, event, ...fields }));
-  };
-  return {
-    info: (event, fields) => {
-      write('info', event, fields);
-    },
-    warn: (event, fields) => {
-      write('warn', event, fields);
-    },
-  };
+  const at =
+    (level: LogLevel) =>
+    (event: string, fields: LogFields = {}) => {
+      sink[level](JSON.stringify({ level, event, ...fields }));
+    };
+  return { info: at('info'), warn: at('warn'), error: at('error') };
 }
 
-export const silentLogger: Logger = {
-  info: () => undefined,
-  warn: () => undefined,
-};
+const ignore = () => undefined;
+export const silentLogger: Logger = { info: ignore, warn: ignore, error: ignore };

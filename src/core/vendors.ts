@@ -10,7 +10,8 @@ import {
   TIER_LABELS,
   type Category,
 } from './constants/enums.js';
-import { VENDOR_PROFILES, type VendorProfile } from './constants/vendors.js';
+import { VENDOR_QUESTION_LIMITS } from './constants/limits.js';
+import { GENERIC_VENDOR_QUESTIONS, VENDOR_PROFILES } from './constants/vendors.js';
 import { formatDate } from './dates.js';
 import { formatInr, formatNumber } from './money.js';
 import { effectiveTier } from './profile.js';
@@ -46,14 +47,10 @@ export interface QuoteComparison {
   lowestCompleteId: string | null;
 }
 
-export function vendorProfileFor(category: Category): VendorProfile | undefined {
-  return VENDOR_PROFILES[category];
-}
-
-export function vendorCategories(lines: readonly BudgetLine[]): Category[] {
-  return lines
-    .map((line) => line.category)
-    .filter((category) => VENDOR_PROFILES[category] !== undefined);
+/** The questions used when the AI is unavailable: the category checklist, or generic ones. */
+export function fallbackVendorQuestions(category: Category): string[] {
+  const questions = VENDOR_PROFILES[category]?.questions ?? GENERIC_VENDOR_QUESTIONS;
+  return questions.slice(0, VENDOR_QUESTION_LIMITS.asked);
 }
 
 function requirementsFor(profile: EventProfile, category: Category): string[] {
@@ -68,7 +65,7 @@ function requirementsFor(profile: EventProfile, category: Category): string[] {
     case 'catering': {
       const plates = Math.ceil(profile.guests * PLATE_BUFFER_RATIO);
       reqs.push(
-        `About ${formatNumber(plates)} plates (${formatNumber(profile.guests)} guests + 5% buffer)`,
+        `About ${formatNumber(plates)} plates (${formatNumber(profile.guests)} guests + ${String(Math.round((PLATE_BUFFER_RATIO - 1) * 100))}% buffer)`,
       );
       if (profile.diets.length > 0) {
         reqs.push(`Menus needed: ${profile.diets.map((diet) => DIET_LABELS[diet]).join(', ')}`);

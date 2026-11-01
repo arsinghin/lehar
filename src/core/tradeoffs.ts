@@ -5,8 +5,14 @@
  * touches, and ranks them by "rupees saved per unit of pain". Protected categories and a locked guest
  * count are never touched. The host chooses; nothing here is applied automatically.
  */
-import { CATEGORY_LABELS, TIER_LABELS, type Category, type Priority } from './constants/enums.js';
-import { MIN_SAFE_CONTINGENCY_PCT, OPTIONAL_CATEGORIES, TIER_ORDER } from './constants/rates.js';
+import {
+  CATEGORY_LABELS,
+  TIER_LABELS,
+  TIERS,
+  type Category,
+  type Priority,
+} from './constants/enums.js';
+import { MIN_SAFE_CONTINGENCY_PCT, OPTIONAL_CATEGORIES } from './constants/rates.js';
 import {
   acceptedQuoteFor,
   categoryRate,
@@ -49,16 +55,18 @@ export const BUFFER_PAIN = 2.5;
 export const MAX_GUEST_TRIM_RATIO = 0.25;
 /** Only categories the host rated "Low" or "Not important" are offered as skippable. */
 export const SKIPPABLE_MAX_PRIORITY: Priority = 2;
+/** Dropping a category hurts a little more than down-grading one the host rated the same. */
+export const SKIP_EXTRA_PAIN = 0.5;
 
 const withBuffer = (amount: number, pct: number) => amount * (1 + pct / 100);
 
-function tierDownLevers(profile: EventProfile, quotes: readonly Quote[]): Lever[] {
+function tierDownLevers(profile: EventProfile, summary: BudgetSummary): Lever[] {
   const levers: Lever[] = [];
-  for (const line of estimateBudget(profile, quotes).lines) {
+  for (const line of summary.lines) {
     const category = line.category;
     if (line.isProtected || line.basis === 'quote' || line.rateIsCustom) continue;
     const tier = effectiveTier(profile, category);
-    const lower = TIER_ORDER[TIER_ORDER.indexOf(tier) - 1];
+    const lower = TIERS[TIERS.indexOf(tier) - 1];
     if (!lower) continue;
     const patch: ProfilePatch = { categoryTiers: { [category]: lower } };
     const lowerRate = categoryRate(applyProfilePatch(profile, patch), category);
@@ -82,9 +90,13 @@ function tierDownLevers(profile: EventProfile, quotes: readonly Quote[]): Lever[
   return levers;
 }
 
-function skipLevers(profile: EventProfile, quotes: readonly Quote[]): Lever[] {
+function skipLevers(
+  profile: EventProfile,
+  quotes: readonly Quote[],
+  summary: BudgetSummary,
+): Lever[] {
   const levers: Lever[] = [];
-  for (const line of estimateBudget(profile, quotes).lines) {
+  for (const line of summary.lines) {
     const lowPriority = line.priority <= SKIPPABLE_MAX_PRIORITY;
     if (!OPTIONAL_CATEGORIES.has(line.category) || line.isProtected || !lowPriority) continue;
     if (acceptedQuoteFor(quotes, line.category)) continue;
@@ -95,26 +107,22 @@ function skipLevers(profile: EventProfile, quotes: readonly Quote[]): Lever[] {
       title: `Skip ${CATEGORY_LABELS[line.category].toLowerCase()}`,
       detail: 'You marked this as low priority. Friends or family could cover it informally.',
       saving: Math.round(withBuffer(line.amount, profile.contingencyPct)),
-      pain: line.priority + 0.5,
+      pain: line.priority + SKIP_EXTRA_PAIN,
       patch: { excludedCategories: [...profile.excludedCategories, line.category] },
     });
   }
   return levers;
 }
 
-function trimGuestsLever(
-  profile: EventProfile,
-  quotes: readonly Quote[],
-  gap: number,
-): Lever | null {
+function trimGuestsLever(profile: EventProfile, summary: BudgetSummary): Lever | null {
   if (profile.lockGuestCount || profile.guests < 2) return null;
-  const perGuest = estimateBudget(profile, quotes)
-    .lines.filter((line) => line.basis === 'estimate')
+  const perGuest = summary.lines
+    .filter((line) => line.basis === 'estimate')
     .reduce((sum, line) => sum + line.rate.perGuest, 0);
   const perGuestWithBuffer = withBuffer(perGuest, profile.contingencyPct);
   if (perGuestWithBuffer <= 0) return null;
   const maxTrim = Math.floor(profile.guests * MAX_GUEST_TRIM_RATIO);
-  const trim = Math.min(Math.ceil(gap / perGuestWithBuffer), maxTrim);
+  const trim = Math.min(Math.ceil(summary.gap / perGuestWithBuffer), maxTrim);
   if (trim < 1) return null;
   const guests = profile.guests - trim;
   return {
@@ -144,6 +152,11 @@ function bufferLever(profile: EventProfile, summary: BudgetSummary): Lever | nul
   };
 }
 
+/** Levers that touch a category the host rated, so their pain is the host's own priority. */
+export function isRatedLever(lever: Lever): boolean {
+  return lever.kind === 'tier-down' || lever.kind === 'skip-category';
+}
+
 /** Merges several lever patches into one (category maps and exclusions are combined). */
 export function combineLeverPatches(profile: EventProfile, levers: readonly Lever[]): ProfilePatch {
   const combined: ProfilePatch = {};
@@ -168,19 +181,22 @@ export function previewLevers(
   return estimateBudget(applyProfilePatch(profile, combineLeverPatches(profile, levers)), quotes);
 }
 
-/** All levers ranked best-first, plus a suggested combination. Empty when within budget. */
+/**
+ * All levers ranked best-first, plus a suggested combination. Empty when within budget.
+ * Pass `summary` when the caller already has the budget, to avoid computing it twice.
+ */
 export function analyzeTradeoffs(
   profile: EventProfile,
   quotes: readonly Quote[] = [],
+  summary: BudgetSummary = estimateBudget(profile, quotes),
 ): TradeoffAnalysis {
-  const summary = estimateBudget(profile, quotes);
   if (summary.gap <= 0)
     return { gap: summary.gap, levers: [], suggestedIds: [], suggestionClosesGap: true };
 
   const candidates: (Lever | null)[] = [
-    ...tierDownLevers(profile, quotes),
-    ...skipLevers(profile, quotes),
-    trimGuestsLever(profile, quotes, summary.gap),
+    ...tierDownLevers(profile, summary),
+    ...skipLevers(profile, quotes, summary),
+    trimGuestsLever(profile, summary),
     bufferLever(profile, summary),
   ];
   const levers = candidates

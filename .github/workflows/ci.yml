@@ -22,32 +22,16 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install
         run: npm ci
 
-      - name: Type-check (browser + Node ESM server)
-        run: npm run typecheck
-
-      - name: Lint (zero warnings)
-        run: npm run lint
-
-      - name: Formatting
-        run: npm run format:check
-
-      - name: Unit, integration and accessibility tests with coverage gates
-        run: npm run test:coverage
-
-      - name: Secret scan
-        run: npm run check:secrets
-
-      - name: Production build
-        run: npm run build
-
-      - name: Performance budget and CSP-safe HTML
-        run: npm run check:size
+      # The same gate contributors run locally: types, lint, format, tests with coverage gates,
+      # secret scan, production build and the performance budget.
+      - name: Verify
+        run: npm run verify
 
       - name: Dependency audit (runtime)
         run: npm audit --omit=dev --audit-level=high

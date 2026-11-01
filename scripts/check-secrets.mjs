@@ -6,6 +6,9 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 
+/** Larger files are generated or binary and are skipped. */
+const MAX_SCANNED_BYTES = 1_000_000;
+
 const PATTERNS = [
   { name: 'Google API key', re: /AIza[0-9A-Za-z_-]{35}/ },
   { name: 'Google OAuth token', re: /ya29\.[0-9A-Za-z_-]{20,}/ },
@@ -16,7 +19,8 @@ const PATTERNS = [
   { name: 'Assigned secret in env file', re: /^(?:GEMINI|OPENROUTER|NVIDIA)_API_KEY=\S+/m },
 ];
 
-function trackedFiles() {
+/** Tracked files plus new, not-ignored ones, so a key is caught before it is committed. */
+function candidateFiles() {
   try {
     return execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], {
       encoding: 'utf8',
@@ -30,11 +34,11 @@ function trackedFiles() {
 }
 
 const findings = [];
-for (const file of trackedFiles()) {
+for (const file of candidateFiles()) {
   if (file === 'package-lock.json' || /\.(png|jpe?g|webp|gif|ico|woff2?)$/i.test(file)) continue;
   let text;
   try {
-    if (statSync(file).size > 1_000_000) continue;
+    if (statSync(file).size > MAX_SCANNED_BYTES) continue;
     text = readFileSync(file, 'utf8');
   } catch {
     continue;

@@ -22,6 +22,7 @@ export type LoadResult =
   | { status: 'invalid' }
   | { status: 'unavailable' };
 
+/** The saved store, or why there is none (empty, damaged or storage blocked). */
 export function loadStore(storage: Pick<Storage, 'getItem'> | null): LoadResult {
   if (!storage) return { status: 'unavailable' };
   let raw: string | null;
@@ -81,6 +82,7 @@ export function isStorageWritable(
   }
 }
 
+/** localStorage, or null when the browser blocks it. */
 export function safeLocalStorage(): Storage | null {
   try {
     return typeof window === 'undefined' ? null : window.localStorage;

@@ -9,13 +9,19 @@ import {
   AGE_GROUPS,
   AI_SOURCES,
   CATEGORIES,
+  COST_LEVELS,
   DIETS,
   EVENT_TYPES,
   PRIORITIES,
   QUOTE_STATUSES,
   TIERS,
 } from './constants/enums.js';
-import { LIMITS } from './constants/limits.js';
+import {
+  IDEA_TEXT_LIMITS,
+  IDEAS_PER_SET,
+  LIMITS,
+  VENDOR_QUESTION_LIMITS,
+} from './constants/limits.js';
 import { isValidIsoDate } from './dates.js';
 
 export const IsoDateSchema = z
@@ -27,8 +33,20 @@ export const TierSchema = z.enum(TIERS);
 export const CategorySchema = z.enum(CATEGORIES);
 export const PrioritySchema = z.literal(PRIORITIES);
 
-const boundedText = (max: number) => z.string().check(z.trim(), z.maxLength(max));
-const wholeNumber = (min: number, max: number) => z.number().check(z.int(), z.gte(min), z.lte(max));
+/** A trimmed string of at most `max` characters. */
+export const boundedText = (max: number) => z.string().check(z.trim(), z.maxLength(max));
+/** An integer between `min` and `max`, inclusive. */
+export const wholeNumber = (min: number, max: number) =>
+  z.number().check(z.int(), z.gte(min), z.lte(max));
+/** A list of enum values, never longer than the enum itself. */
+const enumList = <const T extends readonly [string, ...string[]]>(values: T) =>
+  z.array(z.enum(values)).check(z.maxLength(values.length));
+
+export const AgeGroupsSchema = enumList(AGE_GROUPS);
+export const DietsSchema = enumList(DIETS);
+export const AccessNeedsSchema = enumList(ACCESS_NEEDS);
+export const CategoryListSchema = enumList(CATEGORIES);
+const IdSchema = z.string().check(z.minLength(1), z.maxLength(LIMITS.maxIdLength));
 
 export const RateSchema = z.strictObject({
   perGuest: z.number().check(z.gte(0), z.lte(LIMITS.maxRatePerGuest)),
@@ -44,30 +62,32 @@ export const EventProfileSchema = z.strictObject({
   budget: wholeNumber(LIMITS.minBudget, LIMITS.maxBudget),
   tier: TierSchema,
   priorities: z.record(CategorySchema, PrioritySchema),
-  protectedCategories: z.array(CategorySchema).check(z.maxLength(CATEGORIES.length)),
+  protectedCategories: CategoryListSchema,
   lockGuestCount: z.boolean(),
   categoryTiers: z.partialRecord(CategorySchema, TierSchema),
-  excludedCategories: z.array(CategorySchema).check(z.maxLength(CATEGORIES.length)),
+  excludedCategories: CategoryListSchema,
   rateOverrides: z.partialRecord(CategorySchema, RateSchema),
   contingencyPct: wholeNumber(0, LIMITS.maxContingencyPct),
   mustHaves: z
     .array(boundedText(LIMITS.maxMustHaveLength).check(z.minLength(1)))
     .check(z.maxLength(LIMITS.maxMustHaves)),
-  ageGroups: z.array(z.enum(AGE_GROUPS)).check(z.maxLength(AGE_GROUPS.length)),
-  diets: z.array(z.enum(DIETS)).check(z.maxLength(DIETS.length)),
-  accessNeeds: z.array(z.enum(ACCESS_NEEDS)).check(z.maxLength(ACCESS_NEEDS.length)),
+  ageGroups: AgeGroupsSchema,
+  diets: DietsSchema,
+  accessNeeds: AccessNeedsSchema,
   culture: boundedText(LIMITS.maxCulture),
   notes: boundedText(LIMITS.maxNotes),
 });
 export type EventProfile = z.infer<typeof EventProfileSchema>;
 
 export const QuoteSchema = z.strictObject({
-  id: z.string().check(z.minLength(1), z.maxLength(40)),
+  id: IdSchema,
   category: CategorySchema,
   vendorLabel: boundedText(LIMITS.maxQuoteLabel).check(z.minLength(1)),
   amount: wholeNumber(0, LIMITS.maxBudget),
   guestsCovered: z.nullable(wholeNumber(0, LIMITS.maxGuests)),
-  inclusions: z.array(boundedText(60)).check(z.maxLength(12)),
+  inclusions: z
+    .array(boundedText(LIMITS.maxInclusionLength))
+    .check(z.maxLength(LIMITS.maxInclusions)),
   notes: boundedText(LIMITS.maxQuoteNotes),
   status: z.enum(QUOTE_STATUSES),
 });
@@ -80,40 +100,42 @@ export const TaskProgressSchema = z.strictObject({
 export type TaskProgress = z.infer<typeof TaskProgressSchema>;
 
 export const IdeaSchema = z.strictObject({
-  title: boundedText(70).check(z.minLength(1)),
-  summary: boundedText(260).check(z.minLength(1)),
-  decor: boundedText(200),
-  food: boundedText(200),
-  activity: boundedText(200),
-  whyItFits: boundedText(240),
-  costLevel: z.enum(['lower', 'similar', 'higher']),
+  title: boundedText(IDEA_TEXT_LIMITS.title).check(z.minLength(1)),
+  summary: boundedText(IDEA_TEXT_LIMITS.summary).check(z.minLength(1)),
+  decor: boundedText(IDEA_TEXT_LIMITS.decor),
+  food: boundedText(IDEA_TEXT_LIMITS.food),
+  activity: boundedText(IDEA_TEXT_LIMITS.activity),
+  whyItFits: boundedText(IDEA_TEXT_LIMITS.whyItFits),
+  costLevel: z.enum(COST_LEVELS),
 });
 export type Idea = z.infer<typeof IdeaSchema>;
 
 export const AiSourceSchema = z.enum(AI_SOURCES);
 
 export const IdeaSetSchema = z.strictObject({
-  items: z.array(IdeaSchema).check(z.minLength(1), z.maxLength(3)),
+  items: z.array(IdeaSchema).check(z.minLength(1), z.maxLength(IDEAS_PER_SET)),
   source: AiSourceSchema,
   refinedWith: z.optional(boundedText(LIMITS.maxRefineText)),
 });
 export type IdeaSet = z.infer<typeof IdeaSetSchema>;
 
 export const VendorQuestionSetSchema = z.strictObject({
-  questions: z.array(boundedText(200)).check(z.maxLength(8)),
+  questions: z
+    .array(boundedText(VENDOR_QUESTION_LIMITS.maxLength))
+    .check(z.maxLength(VENDOR_QUESTION_LIMITS.stored)),
   source: AiSourceSchema,
 });
 export type VendorQuestionSet = z.infer<typeof VendorQuestionSetSchema>;
 
 export const PlanStateSchema = z.strictObject({
   schemaVersion: z.literal(1),
-  id: z.string().check(z.minLength(1), z.maxLength(40)),
-  createdAt: z.string().check(z.maxLength(40)),
+  id: IdSchema,
+  createdAt: z.string().check(z.maxLength(LIMITS.maxIdLength)),
   /** Planning start date. Ideal lead times are compressed against this, not against "today". */
   startDate: IsoDateSchema,
   isDemo: z.boolean(),
   profile: EventProfileSchema,
-  progress: z.record(z.string().check(z.maxLength(40)), TaskProgressSchema),
+  progress: z.record(z.string().check(z.maxLength(LIMITS.maxIdLength)), TaskProgressSchema),
   quotes: z.array(QuoteSchema).check(z.maxLength(LIMITS.maxQuotes)),
   ideas: z.nullable(IdeaSetSchema),
   vendorQuestions: z.partialRecord(CategorySchema, VendorQuestionSetSchema),
@@ -121,8 +143,8 @@ export const PlanStateSchema = z.strictObject({
 export type PlanState = z.infer<typeof PlanStateSchema>;
 
 export const SnapshotSchema = z.strictObject({
-  at: z.string().check(z.maxLength(40)),
-  reason: boundedText(160),
+  at: z.string().check(z.maxLength(LIMITS.maxIdLength)),
+  reason: boundedText(LIMITS.maxHistoryReason),
   plan: PlanStateSchema,
 });
 export type Snapshot = z.infer<typeof SnapshotSchema>;

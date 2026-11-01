@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react';
 
-import { Alert, Badge } from '../../components/Badge';
+import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { useNotify } from '../../components/Notice';
+import { budgetToCover, type BudgetSummary } from '../../core/budget';
 import { formatInr } from '../../core/money';
 import { combineLeverPatches, previewLevers } from '../../core/tradeoffs';
-import { nowIso, useOpenPlan } from '../../state/PlanContext';
+import { plural } from '../../lib/util';
+import { useOpenPlan } from '../../state/PlanContext';
+import { actions } from '../../state/store';
+import { LeverList } from './LeverList';
 import { rippleFromSummaries } from './ripple';
 
 /**
- * The over-budget scenario (e.g. 20% over): show the trade-offs and let the family choose. Lehar suggests
- * a combination but never pre-selects it or applies anything on its own.
+ * When the plan is over budget: show the trade-offs and let the family choose. Lehar suggests a
+ * combination but never pre-selects it or applies anything on its own.
  */
 export function TradeoffPanel() {
   const { plan, derived, dispatch } = useOpenPlan();
@@ -25,34 +29,26 @@ export function TradeoffPanel() {
   const preview = useMemo(() => previewLevers(plan.profile, plan.quotes, chosen), [plan, chosen]);
 
   if (budget.gap <= 0) return null;
+  const coveringBudget = budgetToCover(budget.total);
 
   const apply = () => {
-    const patch = combineLeverPatches(plan.profile, chosen);
-    dispatch({
-      type: 'plan/patch',
-      patch,
-      reason: `Trade-offs: ${chosen.map((lever) => lever.title).join('; ')}`,
-      at: nowIso(),
-    });
-    notify(
-      rippleFromSummaries(
-        budget,
-        preview,
-        `Applied ${chosen.length} trade-off${chosen.length === 1 ? '' : 's'}`,
-      ),
-    );
+    const reason = `Trade-offs: ${chosen.map((lever) => lever.title).join('; ')}`;
+    dispatch(actions.patchPlan(combineLeverPatches(plan.profile, chosen), reason));
+    notify(rippleFromSummaries(budget, preview, `Applied ${plural(chosen.length, 'trade-off')}`));
     setSelected([]);
   };
 
   const raiseBudget = () => {
-    const newBudget = Math.ceil(budget.total / 1000) * 1000;
-    dispatch({
-      type: 'plan/patch',
-      patch: { budget: newBudget },
-      reason: `Raised budget to ${formatInr(newBudget)}`,
-      at: nowIso(),
+    dispatch(
+      actions.patchPlan(
+        { budget: coveringBudget },
+        `Raised budget to ${formatInr(coveringBudget)}`,
+      ),
+    );
+    notify({
+      tone: 'ok',
+      text: `Budget raised to ${formatInr(coveringBudget)}. The plan now fits.`,
     });
-    notify({ tone: 'ok', text: `Budget raised to ${formatInr(newBudget)}. The plan now fits.` });
   };
 
   return (
@@ -67,78 +63,15 @@ export function TradeoffPanel() {
         touched.
       </p>
 
-      {tradeoffs.levers.length === 0 ? (
-        <Alert tone="warn" title="Nothing left to trim">
-          <p>
-            Everything left is protected or already at its simplest. Consider raising the budget or
-            unprotecting an area.
-          </p>
-        </Alert>
-      ) : (
-        <fieldset>
-          <legend>Choose the trade-offs you are comfortable with</legend>
-          <ul className="lever-list">
-            {tradeoffs.levers.map((lever) => {
-              const checked = selected.includes(lever.id);
-              const conflicts =
-                lever.category !== undefined &&
-                chosen.some((other) => other.id !== lever.id && other.category === lever.category);
-              return (
-                <li key={lever.id}>
-                  <label className="choice lever">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={conflicts && !checked}
-                      onChange={() => {
-                        setSelected(
-                          checked
-                            ? selected.filter((id) => id !== lever.id)
-                            : [...selected, lever.id],
-                        );
-                      }}
-                    />
-                    <span className="choice__text">
-                      <span>
-                        <strong>{lever.title}</strong>{' '}
-                        {tradeoffs.suggestedIds.includes(lever.id) ? (
-                          <Badge tone="info">Suggested</Badge>
-                        ) : null}
-                      </span>
-                      <span className="choice__desc">{lever.detail}</span>
-                      <span className="small">
-                        Saves about <strong className="num">{formatInr(lever.saving)}</strong>
-                        {lever.kind === 'tier-down' || lever.kind === 'skip-category'
-                          ? ` · you rated this ${Math.floor(lever.pain)} of 5`
-                          : ''}
-                      </span>
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        </fieldset>
-      )}
+      <LeverList
+        levers={tradeoffs.levers}
+        suggestedIds={tradeoffs.suggestedIds}
+        selected={selected}
+        onChange={setSelected}
+      />
 
       <div className="tradeoffs__summary" aria-live="polite">
-        {chosen.length > 0 ? (
-          <p>
-            With {chosen.length} selected: new total{' '}
-            <strong className="num">{formatInr(preview.total)}</strong>,{' '}
-            {preview.gap <= 0 ? (
-              <Badge tone="ok" icon="check">
-                within budget ({formatInr(-preview.gap)} left)
-              </Badge>
-            ) : (
-              <Badge tone="warn" icon="alert">
-                still {formatInr(preview.gap)} over
-              </Badge>
-            )}
-          </p>
-        ) : (
-          <p className="muted">Nothing selected yet.</p>
-        )}
+        <SelectionSummary count={chosen.length} preview={preview} />
       </div>
 
       <div className="row">
@@ -157,9 +90,27 @@ export function TradeoffPanel() {
           Apply selected
         </Button>
         <Button variant="ghost" onClick={raiseBudget}>
-          Or raise the budget to {formatInr(Math.ceil(budget.total / 1000) * 1000)}
+          Or raise the budget to {formatInr(coveringBudget)}
         </Button>
       </div>
     </section>
+  );
+}
+
+function SelectionSummary({ count, preview }: { count: number; preview: BudgetSummary }) {
+  if (count === 0) return <p className="muted">Nothing selected yet.</p>;
+  return (
+    <p>
+      With {count} selected: new total <strong className="num">{formatInr(preview.total)}</strong>,{' '}
+      {preview.gap <= 0 ? (
+        <Badge tone="ok" icon="check">
+          within budget ({formatInr(-preview.gap)} left)
+        </Badge>
+      ) : (
+        <Badge tone="warn" icon="alert">
+          still {formatInr(preview.gap)} over
+        </Badge>
+      )}
+    </p>
   );
 }

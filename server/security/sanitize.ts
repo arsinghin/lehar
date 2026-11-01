@@ -1,5 +1,5 @@
 /**
- * Output sanitising for model text. Even with a strict prompt, a model may echo a URL, a phone
+ * Output sanitizing for model text. Even with a strict prompt, a model may echo a URL, a phone
  * number or a price, so they are removed before anything reaches the browser. React escapes output
  * anyway; stripping tags here is defence in depth.
  */
@@ -12,17 +12,21 @@ const RUPEE_AMOUNTS =
   /(?:₹|\brs\.?|\binr)\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:lakhs?|lacs?|crores?|cr|k)\b)?/gi;
 const UNIT_AMOUNTS = /\b\d[\d,]*(?:\.\d+)?\s*(?:lakhs?|lacs?|crores?)\b/gi;
 
-/** C0/C1 control characters (except tab and newline), zero-width characters and bidi overrides. */
+/** C0/C1 control characters, zero-width characters and bidi overrides, as inclusive ranges. */
+const HIDDEN_RANGES: readonly (readonly [number, number])[] = [
+  [0x00, 0x1f],
+  [0x7f, 0x9f],
+  [0x200b, 0x200f],
+  [0x202a, 0x202e],
+  [0x2066, 0x2069],
+];
+/** Tab and newline are control characters but keep text readable. */
+const ALLOWED_CONTROLS = new Set([0x09, 0x0a]);
+
 function isInvisibleOrControl(char: string): boolean {
   const code = char.codePointAt(0) ?? 0;
-  if (code === 0x09 || code === 0x0a) return false;
-  return (
-    code < 0x20 ||
-    (code >= 0x7f && code <= 0x9f) ||
-    (code >= 0x200b && code <= 0x200f) ||
-    (code >= 0x202a && code <= 0x202e) ||
-    (code >= 0x2066 && code <= 0x2069)
-  );
+  if (ALLOWED_CONTROLS.has(code)) return false;
+  return HIDDEN_RANGES.some(([from, to]) => code >= from && code <= to);
 }
 
 /** Removes characters that can hide or disguise text. */
@@ -32,6 +36,7 @@ export function stripInvisible(value: string): string {
     .join('');
 }
 
+/** Model text with links, contacts, prices, tags and hidden characters removed, cut to `maxLength`. */
 export function sanitizeModelText(value: string, maxLength: number): string {
   return stripInvisible(value.normalize('NFKC'))
     .replace(TAGS, '')
@@ -47,12 +52,4 @@ export function sanitizeModelText(value: string, maxLength: number): string {
     .trim()
     .slice(0, maxLength)
     .trim();
-}
-
-/** Extracts a JSON object from model text that may be wrapped in a code fence or prose. */
-export function extractJsonObject(text: string): unknown {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new SyntaxError('No JSON object in model output');
-  return JSON.parse(text.slice(start, end + 1));
 }

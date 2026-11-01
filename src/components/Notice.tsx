@@ -2,26 +2,23 @@
  * A visible, announced status area for "ripple" messages ("Catering +₹55,000, total now …").
  * There is one region for the whole workspace, so screen readers hear every update exactly once.
  */
-import { createContext, use, useCallback, useMemo, useState, type ReactNode } from 'react';
+import { createContext, use, useState, type ReactNode } from 'react';
 
-import { Alert, type Tone } from './Badge';
+import { Alert, type AlertTone } from './Alert';
 import { Button } from './Button';
 
 export interface NoticeMessage {
-  tone: Exclude<Tone, 'neutral'>;
+  tone: AlertTone;
   text: string;
 }
 
 const NoticeContext = createContext<((notice: NoticeMessage | null) => void) | null>(null);
 
+/** Owns the single announced status region and lets any screen post to it with `useNotify`. */
 export function NoticeProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<NoticeMessage | null>(null);
-  const notify = useCallback((next: NoticeMessage | null) => {
-    setNotice(next);
-  }, []);
-  const value = useMemo(() => notify, [notify]);
   return (
-    <NoticeContext value={value}>
+    <NoticeContext value={setNotice}>
       <div className="notice-region" role="status" aria-live="polite">
         {notice ? (
           <Alert tone={notice.tone}>
@@ -45,6 +42,7 @@ export function NoticeProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** Shows a message in the status region, or clears it with null. */
 export function useNotify(): (notice: NoticeMessage | null) => void {
   const notify = use(NoticeContext);
   if (!notify) throw new Error('useNotify must be used inside <NoticeProvider>');

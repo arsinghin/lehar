@@ -23,6 +23,12 @@ export type Category = (typeof CATEGORIES)[number];
 
 export const PRIORITIES = [1, 2, 3, 4, 5] as const;
 export type Priority = (typeof PRIORITIES)[number];
+export const MAX_PRIORITY: Priority = 5;
+
+/** A slider or form value as a priority, or null when it is not one of 1–5. */
+export function toPriority(value: number): Priority | null {
+  return PRIORITIES.find((priority) => priority === value) ?? null;
+}
 
 export const AGE_GROUPS = ['kids', 'teens', 'adults', 'seniors'] as const;
 export type AgeGroup = (typeof AGE_GROUPS)[number];

@@ -32,10 +32,12 @@ const UNIT_MULTIPLIERS: Record<string, number> = {
 export const AMOUNT_PATTERN =
   /(?:₹|\brs\.?|\binr)?\s*(\d[\d,]*(?:\.\d+)?)\s*(crores?|cr|lakhs?|lacs?|lac|l|k|thousand)?(?![a-z])/i;
 
+/** Whole rupees with Indian digit grouping: "₹8,00,000". */
 export function formatInr(amount: number): string {
   return INR_FORMAT.format(Math.round(amount));
 }
 
+/** A number with Indian digit grouping: "1,20,000". */
 export function formatNumber(value: number): string {
   return NUMBER_FORMAT.format(value);
 }

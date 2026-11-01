@@ -65,6 +65,7 @@ export function relevantCategories(eventType: EventType): Category[] {
   return CATEGORIES.filter((category) => rates[category] !== undefined);
 }
 
+/** Starting priorities for an event type, before the host rates anything. */
 export function defaultPriorities(eventType: EventType): Record<Category, Priority> {
   return { ...DEFAULT_PRIORITIES[eventType] };
 }
@@ -116,6 +117,7 @@ export function applyProfilePatch(profile: EventProfile, patch: ProfilePatch): E
   };
 }
 
+/** A category's style: its own setting, or the plan's overall style. */
 export function effectiveTier(profile: EventProfile, category: Category): Tier {
   return profile.categoryTiers[category] ?? profile.tier;
 }

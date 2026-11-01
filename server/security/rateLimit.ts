@@ -3,6 +3,7 @@
  * This protects the free AI quota from abuse. A distributed limiter (for example Vercel KV) would be
  * the next step at higher scale. The trade-off is recorded in docs/DECISIONS.md.
  */
+import { LruMap } from '../../src/core/lruMap.js';
 
 export interface RateLimitOptions {
   perMinute: number;
@@ -21,16 +22,17 @@ interface Window {
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 86_400_000;
+/** Clients remembered per instance; the least recently seen are forgotten first. */
+const DEFAULT_MAX_KEYS = 5_000;
 
 export class RateLimiter {
-  private readonly windows = new Map<string, Window>();
-  private readonly maxKeys: number;
+  private readonly windows: LruMap<string, Window>;
 
   constructor(
     private readonly options: RateLimitOptions,
     private readonly now: () => number = Date.now,
   ) {
-    this.maxKeys = options.maxKeys ?? 5_000;
+    this.windows = new LruMap(options.maxKeys ?? DEFAULT_MAX_KEYS);
   }
 
   check(key: string): RateLimitResult {
@@ -49,7 +51,7 @@ export class RateLimiter {
       window.dayStart = now;
       window.dayCount = 0;
     }
-    this.touch(key, window);
+    this.windows.set(key, window);
 
     if (window.dayCount >= this.options.perDay) {
       return {
@@ -66,16 +68,6 @@ export class RateLimiter {
     window.minuteCount += 1;
     window.dayCount += 1;
     return { allowed: true };
-  }
-
-  private touch(key: string, window: Window): void {
-    this.windows.delete(key);
-    this.windows.set(key, window);
-    while (this.windows.size > this.maxKeys) {
-      const oldest = this.windows.keys().next().value;
-      if (oldest === undefined) break;
-      this.windows.delete(oldest);
-    }
   }
 }
 

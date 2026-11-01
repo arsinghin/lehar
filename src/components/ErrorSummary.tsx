@@ -1,37 +1,29 @@
 /** Error summary that receives focus on a failed submit and links to each invalid field. */
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 
-export interface FieldError {
-  fieldId: string;
-  message: string;
+import type { FieldError } from '../core/validation';
+import { plural } from '../lib/util';
+
+export interface ErrorSummaryProps {
+  errors: readonly FieldError[];
+  /** Changes on every submit attempt, so focus returns here even when the errors are the same. */
+  focusKey: number;
 }
 
-export function ErrorSummary({
-  errors,
-  focusKey,
-}: {
-  errors: readonly FieldError[];
-  focusKey: number;
-}) {
+/** Lists every invalid field with a link to it, and takes focus after each failed submit. */
+export function ErrorSummary({ errors, focusKey }: ErrorSummaryProps) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (errors.length > 0) ref.current?.focus();
-    // Re-focus on every failed attempt, not only when the error list changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusKey]);
+  const titleId = useId();
+  const count = errors.length;
 
-  if (errors.length === 0) return null;
+  useEffect(() => {
+    if (count > 0) ref.current?.focus();
+  }, [focusKey, count]);
+
+  if (count === 0) return null;
   return (
-    <div
-      ref={ref}
-      className="error-summary"
-      role="alert"
-      tabIndex={-1}
-      aria-labelledby="error-summary-title"
-    >
-      <h3 id="error-summary-title">
-        Please fix {errors.length === 1 ? 'this' : `these ${errors.length} things`}
-      </h3>
+    <div ref={ref} className="error-summary" role="alert" tabIndex={-1} aria-labelledby={titleId}>
+      <h3 id={titleId}>Please fix {count === 1 ? 'this' : `these ${plural(count, 'thing')}`}</h3>
       <ul>
         {errors.map((error) => (
           <li key={error.fieldId}>

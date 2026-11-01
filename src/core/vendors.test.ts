@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { profile, quote } from '../../tests/fixtures';
 import { estimateBudget } from './budget';
-import { compareQuotes, vendorBrief, vendorCategories, vendorProfileFor } from './vendors';
+import { VENDOR_QUESTION_LIMITS } from './constants/limits';
+import { GENERIC_VENDOR_QUESTIONS, VENDOR_PROFILES } from './constants/vendors';
+import { compareQuotes, fallbackVendorQuestions, vendorBrief } from './vendors';
 
 const line = (category: string, p = profile()) => {
   const found = estimateBudget(p).lines.find((l) => l.category === category);
@@ -43,18 +45,13 @@ describe('vendorBrief', () => {
       'Coverage for 200 guests',
     );
     expect(vendorBrief(profile(), line('attire'))).toBeNull();
-    expect(vendorProfileFor('attire')).toBeUndefined();
   });
 
-  it('lists only categories that need vendors', () => {
-    expect(vendorCategories(estimateBudget(profile()).lines)).toEqual([
-      'venue',
-      'catering',
-      'decor',
-      'photo',
-      'entertainment',
-      'logistics',
-    ]);
+  it('falls back to the category checklist, or to generic questions, capped at what the prompt asks for', () => {
+    expect(fallbackVendorQuestions('catering')).toEqual(
+      VENDOR_PROFILES.catering?.questions.slice(0, VENDOR_QUESTION_LIMITS.asked),
+    );
+    expect(fallbackVendorQuestions('attire')).toEqual(GENERIC_VENDOR_QUESTIONS);
   });
 });
 

@@ -3,12 +3,13 @@
  * it uses the same deterministic rules as the server, so the host is never stuck.
  */
 import { toIdeaContext, toParseChangeRequest, toVendorQuestionsRequest } from '../core/aiContext';
-import { changesFromAiOutput } from '../core/changes/aiChange';
+import { CHANGE_HELP, changesFromAiOutput } from '../core/changes/aiChange';
 import { parseChangeText, type ParsedChange } from '../core/changes/parseChange';
 import type { AiSource, Category } from '../core/constants/enums';
-import { VENDOR_PROFILES } from '../core/constants/vendors';
+import type { IsoDate } from '../core/dates';
 import { generateFallbackIdeas } from '../core/ideas';
 import type { EventProfile, IdeaSet, VendorQuestionSet } from '../core/schemas';
+import { fallbackVendorQuestions } from '../core/vendors';
 import { AiClientError, requestAi } from './apiClient';
 
 export interface AiOutcome<T> {
@@ -42,6 +43,7 @@ export class AiInputError extends Error {
   override name = 'AiInputError';
 }
 
+/** Ideas from the AI, or built-in ideas when it is unavailable. */
 export async function fetchIdeas(
   profile: EventProfile,
   refine?: { ideaTitle: string; instruction: string },
@@ -71,6 +73,7 @@ export async function fetchIdeas(
   }
 }
 
+/** Vendor questions from the AI, or the built-in checklist when it is unavailable. */
 export async function fetchVendorQuestions(
   profile: EventProfile,
   category: Category,
@@ -85,7 +88,7 @@ export async function fetchVendorQuestions(
     const { fallback, notice } = noticeFor(error);
     if (!fallback) throw new AiInputError(notice);
     return {
-      value: { questions: [...(VENDOR_PROFILES[category]?.questions ?? [])], source: 'rules' },
+      value: { questions: fallbackVendorQuestions(category), source: 'rules' },
       notice,
     };
   }
@@ -97,14 +100,11 @@ export interface InterpretedChange {
   notice: string | null;
 }
 
-export const CHANGE_HELP =
-  'Try something like “50 more guests”, “budget is now 7 lakh” or “2 weeks earlier”.';
-
 /** Rules first, because they are instant and exact. The AI is asked only when the rules understood nothing. */
 export async function interpretChange(
   profile: EventProfile,
   text: string,
-  today: string,
+  today: IsoDate,
 ): Promise<InterpretedChange> {
   const local = parseChangeText(text, today);
   if (local.changes.length > 0 || local.clarifications.length > 0)

@@ -11,6 +11,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children?: ReactNode;
 }
 
+/** The app button: a variant, an optional icon, and a busy state that disables it and shows a spinner. */
 export function Button({
   variant = 'secondary',
   size = 'm',

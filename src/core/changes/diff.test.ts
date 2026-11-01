@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { plan, quote, TODAY } from '../../../tests/fixtures';
-import { createDemoPlan, CHANGE_TEST_TEXT, withProfilePatch } from '../plan';
+import { createDemoPlan, SAMPLE_CHANGE_TEXT } from '../demo';
+import { withProfilePatch } from '../plan';
 import { diffPlans } from './diff';
-import { parseChangeText, resolveChanges } from './parseChange';
+import { parseChangeText } from './parseChange';
+import { resolveChanges } from './resolveChanges';
 
 describe('diffPlans — a combined change end to end', () => {
   const before = createDemoPlan('wedding', { id: 'demo', now: 'now', today: TODAY });
-  const { patch } = resolveChanges(parseChangeText(CHANGE_TEST_TEXT, TODAY).changes, {
+  const { patch } = resolveChanges(parseChangeText(SAMPLE_CHANGE_TEXT, TODAY).changes, {
     guests: before.profile.guests,
     budget: before.profile.budget,
     eventDate: before.profile.eventDate,

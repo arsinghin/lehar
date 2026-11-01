@@ -1,7 +1,9 @@
 import { Button } from '../../components/Button';
 import type { ScheduledTask } from '../../core/timeline';
-import { nowIso, usePlanStore } from '../../state/PlanContext';
+import { usePlanStore } from '../../state/PlanContext';
+import { actions } from '../../state/store';
 
+/** A one-click "Done" for a task shown outside the Timeline tab (e.g. Overview's "Do next"). */
 export function TaskDoneButton({ task }: { task: ScheduledTask }) {
   const { dispatch } = usePlanStore();
   return (
@@ -10,13 +12,7 @@ export function TaskDoneButton({ task }: { task: ScheduledTask }) {
       size="s"
       icon="check"
       onClick={() => {
-        dispatch({
-          type: 'task/setDone',
-          taskId: task.id,
-          title: task.title,
-          done: true,
-          at: nowIso(),
-        });
+        dispatch(actions.setTaskDone(task.id, task.title, true));
       }}
     >
       Done

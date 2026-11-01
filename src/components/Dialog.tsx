@@ -14,6 +14,7 @@ interface DialogProps {
   footer?: ReactNode;
 }
 
+/** A modal dialog on the native <dialog> element, which traps focus and closes on Escape. */
 export function Dialog({ open, title, onClose, children, footer }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();

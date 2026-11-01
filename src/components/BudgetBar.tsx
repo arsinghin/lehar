@@ -4,6 +4,7 @@
  */
 import type { BudgetStatus } from '../core/budget';
 
+/** A bar showing the estimate against the budget, with the same facts in its accessible label. */
 export function BudgetBar({
   total,
   budget,

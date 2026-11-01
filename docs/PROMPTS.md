@@ -2,7 +2,8 @@
 
 Prompts are versioned in `server/ai/prompts.ts` (`PROMPT_VERSIONS`). This file records what each prompt
 does, why it is written that way, and how it has changed. When you change a prompt, bump its version and
-add a row to the changelog below.
+add a row to the changelog below. The version is part of the response cache key, so a bump takes effect
+immediately.
 
 ## Shared system prompt
 
@@ -36,6 +37,7 @@ contacts, URLs or availability · respect every constraint without assuming · a
 | `ideas@1`, `parseChange@1`, `vendorQuestions@1` | 2026-10-26 | First release                                                                                                                       |
 | (OpenRouter request)                            | 2026-10-26 | Schema in the prompt, low reasoning effort with token headroom, longer timeout (prompts unchanged)                                  |
 | (Providers)                                     | 2026-10-26 | OpenRouter default switched to Nemotron 3.5 Lightning with reasoning off; NVIDIA NIM added as the next fallback (prompts unchanged) |
+| (Cache)                                         | 2026-11-01 | The prompt version is now part of the server's cache key, so bumping a version never serves answers to the old prompt               |
 
 ## How Lehar was built
 

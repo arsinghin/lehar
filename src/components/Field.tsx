@@ -6,12 +6,13 @@ import {
   useId,
   type InputHTMLAttributes,
   type ReactNode,
+  type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
 
 import { cx } from '../lib/util';
 
-interface FieldMeta {
+export interface FieldMeta {
   label: ReactNode;
   hint?: ReactNode;
   error?: string | undefined;
@@ -19,42 +20,79 @@ interface FieldMeta {
   hideLabel?: boolean;
 }
 
-function useFieldIds(id: string | undefined, hint: ReactNode, error: string | undefined) {
-  const generated = useId();
-  const fieldId = id ?? generated;
-  const hintId = hint ? `${fieldId}-hint` : undefined;
-  const errorId = error ? `${fieldId}-error` : undefined;
-  const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined;
-  return { fieldId, hintId, errorId, describedBy };
+export interface DescribedBy {
+  id: string;
+  hintId: string | undefined;
+  errorId: string | undefined;
+  describedBy: string | undefined;
 }
 
-function Meta({
-  hint,
-  hintId,
-  error,
-  errorId,
-}: {
+/** Ids for a control and its hint and error, and the matching aria-describedby value. */
+export function useDescribedBy(id: string | undefined, hint: unknown, error: unknown): DescribedBy {
+  const generated = useId();
+  const controlId = id ?? generated;
+  const hintId = hint ? `${controlId}-hint` : undefined;
+  const errorId = error ? `${controlId}-error` : undefined;
+  const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined;
+  return { id: controlId, hintId, errorId, describedBy };
+}
+
+export interface FieldMessagesProps {
+  ids: DescribedBy;
   hint: ReactNode;
-  hintId: string | undefined;
   error: string | undefined;
-  errorId: string | undefined;
-}) {
+  /** Paragraphs suit fieldsets; spans suit the grid of a single field. */
+  as?: 'span' | 'p';
+}
+
+/** The hint and error lines under a control (or a group of controls). */
+export function FieldMessages({ ids, hint, error, as: Tag = 'span' }: FieldMessagesProps) {
   return (
     <>
       {hint ? (
-        <span id={hintId} className="field__hint">
+        <Tag id={ids.hintId} className="field__hint">
           {hint}
-        </span>
+        </Tag>
       ) : null}
       {error ? (
-        <span id={errorId} className="field__error">
+        <Tag id={ids.errorId} className="field__error">
           {error}
-        </span>
+        </Tag>
       ) : null}
     </>
   );
 }
 
+interface FieldShellProps extends FieldMeta {
+  ids: DescribedBy;
+  className: string | undefined;
+  children: ReactNode;
+}
+
+function FieldShell({ ids, label, hint, error, hideLabel, className, children }: FieldShellProps) {
+  return (
+    <div className={cx('field', className)}>
+      <label htmlFor={ids.id} className={cx(hideLabel && 'visually-hidden')}>
+        {label}
+      </label>
+      {children}
+      <FieldMessages ids={ids} hint={hint} error={error} />
+    </div>
+  );
+}
+
+/** Props every control receives from its shell. */
+function controlProps(ids: DescribedBy, error: string | undefined) {
+  return {
+    id: ids.id,
+    'aria-describedby': ids.describedBy,
+    'aria-invalid': error ? true : undefined,
+  };
+}
+
+export type TextFieldProps = FieldMeta & InputHTMLAttributes<HTMLInputElement>;
+
+/** A labelled text input with an optional hint and error. */
 export function TextField({
   label,
   hint,
@@ -63,25 +101,18 @@ export function TextField({
   id,
   className,
   ...input
-}: FieldMeta & InputHTMLAttributes<HTMLInputElement>) {
-  const ids = useFieldIds(id, hint, error);
+}: TextFieldProps) {
+  const ids = useDescribedBy(id, hint, error);
   return (
-    <div className={cx('field', className)}>
-      <label htmlFor={ids.fieldId} className={cx(hideLabel && 'visually-hidden')}>
-        {label}
-      </label>
-      <input
-        id={ids.fieldId}
-        className="input"
-        aria-describedby={ids.describedBy}
-        aria-invalid={error ? true : undefined}
-        {...input}
-      />
-      <Meta hint={hint} hintId={ids.hintId} error={error} errorId={ids.errorId} />
-    </div>
+    <FieldShell {...{ ids, label, hint, error, hideLabel, className }}>
+      <input className="input" {...controlProps(ids, error)} {...input} />
+    </FieldShell>
   );
 }
 
+export type TextAreaFieldProps = FieldMeta & TextareaHTMLAttributes<HTMLTextAreaElement>;
+
+/** A labelled multi-line input with an optional hint and error. */
 export function TextAreaField({
   label,
   hint,
@@ -90,21 +121,62 @@ export function TextAreaField({
   id,
   className,
   ...input
-}: FieldMeta & TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  const ids = useFieldIds(id, hint, error);
+}: TextAreaFieldProps) {
+  const ids = useDescribedBy(id, hint, error);
   return (
-    <div className={cx('field', className)}>
-      <label htmlFor={ids.fieldId} className={cx(hideLabel && 'visually-hidden')}>
-        {label}
-      </label>
-      <textarea
-        id={ids.fieldId}
-        className="textarea"
-        aria-describedby={ids.describedBy}
-        aria-invalid={error ? true : undefined}
-        {...input}
-      />
-      <Meta hint={hint} hintId={ids.hintId} error={error} errorId={ids.errorId} />
-    </div>
+    <FieldShell {...{ ids, label, hint, error, hideLabel, className }}>
+      <textarea className="textarea" {...controlProps(ids, error)} {...input} />
+    </FieldShell>
+  );
+}
+
+export interface SelectOption<T extends string | number> {
+  value: T;
+  label: string;
+}
+
+export interface SelectFieldProps<T extends string | number>
+  extends FieldMeta, Omit<SelectHTMLAttributes<HTMLSelectElement>, 'value' | 'onChange'> {
+  value: T;
+  options: readonly SelectOption<T>[];
+  onValueChange: (value: T) => void;
+  /** Smaller select for use inside tables and rows. */
+  compact?: boolean;
+}
+
+/** A labelled select that reports the chosen option's typed value, so callers never cast. */
+export function SelectField<T extends string | number>({
+  label,
+  hint,
+  error,
+  hideLabel,
+  id,
+  className,
+  value,
+  options,
+  onValueChange,
+  compact,
+  ...select
+}: SelectFieldProps<T>) {
+  const ids = useDescribedBy(id, hint, error);
+  return (
+    <FieldShell {...{ ids, label, hint, error, hideLabel, className }}>
+      <select
+        className={cx('select', compact && 'select--compact')}
+        {...controlProps(ids, error)}
+        {...select}
+        value={String(value)}
+        onChange={(event) => {
+          const chosen = options.find((option) => String(option.value) === event.target.value);
+          if (chosen) onValueChange(chosen.value);
+        }}
+      >
+        {options.map((option) => (
+          <option key={String(option.value)} value={String(option.value)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </FieldShell>
   );
 }

@@ -22,6 +22,7 @@ export interface GeminiOptions {
   client?: GeminiClientLike;
 }
 
+/** A Gemini provider. The SDK client is created on first use, so cold starts without a key stay cheap. */
 export function createGeminiProvider({ apiKey, model, client }: GeminiOptions): AiProvider {
   let sdk: GeminiClientLike | undefined = client;
   return {

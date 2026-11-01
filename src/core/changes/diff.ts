@@ -5,9 +5,9 @@
  */
 import { CATEGORY_LABELS, TIER_LABELS, type Category } from '../constants/enums.js';
 import { estimateBudget, type BudgetStatus } from '../budget.js';
-import { diffDays, formatDate } from '../dates.js';
+import { diffDays, formatDate, type IsoDate } from '../dates.js';
 import { formatInr, formatNumber } from '../money.js';
-import { buildSchedule } from '../timeline.js';
+import { scheduleFor } from '../timeline.js';
 import type { PlanState } from '../schemas.js';
 
 export interface FieldChange {
@@ -35,7 +35,7 @@ export interface BudgetSide {
 export interface TaskRef {
   id: string;
   title: string;
-  due: string;
+  due: IsoDate;
 }
 
 export interface RequoteNotice {
@@ -162,19 +162,12 @@ function requotes(before: PlanState, after: PlanState): RequoteNotice[] {
   return notices;
 }
 
-export function diffPlans(before: PlanState, after: PlanState, today: string): PlanDiff {
+/** Every ripple of going from `before` to `after`: fields, budget lines, timeline, re-quotes and what is kept. */
+export function diffPlans(before: PlanState, after: PlanState, today: IsoDate): PlanDiff {
   const budgetBefore = side(before);
   const budgetAfter = side(after);
-  const scheduleOf = (plan: PlanState) =>
-    buildSchedule({
-      eventType: plan.profile.eventType,
-      eventDate: plan.profile.eventDate,
-      startDate: plan.startDate,
-      progress: plan.progress,
-      today,
-    });
-  const schedBefore = scheduleOf(before);
-  const schedAfter = scheduleOf(after);
+  const schedBefore = scheduleFor(before, today);
+  const schedAfter = scheduleFor(after, today);
   const overdueBefore = new Set(
     schedBefore.tasks.filter((t) => t.state === 'overdue').map((t) => t.id),
   );

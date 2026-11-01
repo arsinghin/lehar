@@ -1,5 +1,8 @@
 /** Radio and checkbox groups rendered as a fieldset with a legend, so the question is announced with each option. */
-import { useId, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+
+import { toggleItem } from '../lib/util';
+import { FieldMessages, useDescribedBy } from './Field';
 
 export interface ChoiceOption<T extends string> {
   value: T;
@@ -16,56 +19,34 @@ interface GroupProps<T extends string> {
   id?: string;
 }
 
-function GroupShell({
-  legend,
-  hint,
-  error,
-  id,
-  children,
-}: {
+interface GroupShellProps {
   legend: ReactNode;
   hint: string | undefined;
   error: string | undefined;
-  id: string;
+  id: string | undefined;
   children: ReactNode;
-}) {
-  const hintId = hint ? `${id}-hint` : undefined;
-  const errorId = error ? `${id}-error` : undefined;
+}
+
+function GroupShell({ legend, hint, error, id, children }: GroupShellProps) {
+  const ids = useDescribedBy(id, hint, error);
   return (
-    <fieldset
-      id={id}
-      aria-describedby={[hintId, errorId].filter(Boolean).join(' ') || undefined}
-      tabIndex={-1}
-    >
+    <fieldset id={ids.id} aria-describedby={ids.describedBy} tabIndex={-1}>
       <legend>{legend}</legend>
-      {hint ? (
-        <p id={hintId} className="field__hint">
-          {hint}
-        </p>
-      ) : null}
-      {error ? (
-        <p id={errorId} className="field__error">
-          {error}
-        </p>
-      ) : null}
+      <FieldMessages ids={ids} hint={hint} error={error} as="p" />
       <div className="choices">{children}</div>
     </fieldset>
   );
 }
 
-function Choice({
-  type,
-  name,
-  option,
-  checked,
-  onChange,
-}: {
+interface ChoiceProps {
   type: 'radio' | 'checkbox';
   name: string;
   option: ChoiceOption<string>;
   checked: boolean;
   onChange: () => void;
-}) {
+}
+
+function Choice({ type, name, option, checked, onChange }: ChoiceProps) {
   return (
     <label className="choice">
       <input type={type} name={name} value={option.value} checked={checked} onChange={onChange} />
@@ -77,20 +58,20 @@ function Choice({
   );
 }
 
-export function RadioGroup<T extends string>({
-  value,
-  onChange,
-  id,
-  ...props
-}: GroupProps<T> & { value: T; onChange: (value: T) => void }) {
-  const generated = useId();
+export interface RadioGroupProps<T extends string> extends GroupProps<T> {
+  value: T;
+  onChange: (value: T) => void;
+}
+
+/** One answer from a short list. */
+export function RadioGroup<T extends string>({ value, onChange, ...group }: RadioGroupProps<T>) {
   return (
-    <GroupShell legend={props.legend} hint={props.hint} error={props.error} id={id ?? generated}>
-      {props.options.map((option) => (
+    <GroupShell legend={group.legend} hint={group.hint} error={group.error} id={group.id}>
+      {group.options.map((option) => (
         <Choice
           key={option.value}
           type="radio"
-          name={props.name}
+          name={group.name}
           option={option}
           checked={value === option.value}
           onChange={() => {
@@ -102,28 +83,30 @@ export function RadioGroup<T extends string>({
   );
 }
 
+export interface CheckboxGroupProps<T extends string> extends GroupProps<T> {
+  value: readonly T[];
+  onChange: (value: T[]) => void;
+}
+
+/** Any number of answers from a short list. */
 export function CheckboxGroup<T extends string>({
   value,
   onChange,
-  id,
-  ...props
-}: GroupProps<T> & { value: readonly T[]; onChange: (value: T[]) => void }) {
-  const generated = useId();
+  ...group
+}: CheckboxGroupProps<T>) {
   return (
-    <GroupShell legend={props.legend} hint={props.hint} error={props.error} id={id ?? generated}>
-      {props.options.map((option) => {
+    <GroupShell legend={group.legend} hint={group.hint} error={group.error} id={group.id}>
+      {group.options.map((option) => {
         const checked = value.includes(option.value);
         return (
           <Choice
             key={option.value}
             type="checkbox"
-            name={props.name}
+            name={group.name}
             option={option}
             checked={checked}
             onChange={() => {
-              onChange(
-                checked ? value.filter((item) => item !== option.value) : [...value, option.value],
-              );
+              onChange(toggleItem(value, option.value, !checked));
             }}
           />
         );

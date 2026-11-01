@@ -1,7 +1,7 @@
 /**
  * Heuristic prompt-injection screen for the few free-text fields (change requests, refinements,
  * culture, must-haves). It is one layer of several: user data is also JSON-encoded inside delimiters,
- * and the model's output is schema-validated and sanitised. False positives are acceptable here
+ * and the model's output is schema-validated and sanitized. False positives are acceptable here
  * because the user can simply rephrase.
  */
 
@@ -17,7 +17,8 @@ const INJECTION_PATTERNS: readonly RegExp[] = [
   /\bjailbreak\b|\bDAN\s+mode\b/i,
 ];
 
+/** True when free text looks like an attempt to give the model instructions. */
 export function looksLikePromptInjection(text: string): boolean {
-  const normalised = text.normalize('NFKC');
-  return INJECTION_PATTERNS.some((pattern) => pattern.test(normalised));
+  const normalized = text.normalize('NFKC');
+  return INJECTION_PATTERNS.some((pattern) => pattern.test(normalized));
 }

@@ -26,6 +26,7 @@ export function isAllowedOrigin(request: Request, allowedOrigins: readonly strin
   }
 }
 
+/** True for application/json requests, with or without a charset. */
 export function isJsonContentType(request: Request): boolean {
   const type = request.headers.get('content-type') ?? '';
   return /^application\/json\b/i.test(type.trim());

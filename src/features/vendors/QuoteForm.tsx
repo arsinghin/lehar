@@ -5,64 +5,44 @@ import { CheckboxGroup } from '../../components/ChoiceGroup';
 import { TextField } from '../../components/Field';
 import { useNotify } from '../../components/Notice';
 import { LIMITS } from '../../core/constants/limits';
-import { formatInr, parseInrAmount } from '../../core/money';
-import type { Quote } from '../../core/schemas';
+import { formatInr } from '../../core/money';
 import type { VendorBrief } from '../../core/vendors';
 import { newId } from '../../lib/util';
-import { nowIso, useOpenPlan } from '../../state/PlanContext';
-import { parseGuests } from '../intake/intakeDraft';
-
-interface Errors {
-  vendorLabel?: string;
-  amount?: string;
-  guestsCovered?: string;
-}
+import { useOpenPlan } from '../../state/PlanContext';
+import { actions } from '../../state/store';
+import {
+  EMPTY_QUOTE_DRAFT,
+  quoteFromDraft,
+  type QuoteDraft,
+  type QuoteDraftErrors,
+} from './quoteDraft';
 
 /** Records a quote exactly as the vendor gave it. Lehar never fills in prices itself. */
 export function QuoteForm({ brief }: { brief: VendorBrief }) {
   const { plan, dispatch } = useOpenPlan();
   const notify = useNotify();
-  const [vendorLabel, setVendorLabel] = useState('');
-  const [amount, setAmount] = useState('');
-  const [guestsCovered, setGuestsCovered] = useState('');
-  const [inclusions, setInclusions] = useState<string[]>([]);
-  const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState<Errors>({});
+  const [draft, setDraft] = useState<QuoteDraft>(EMPTY_QUOTE_DRAFT);
+  const [errors, setErrors] = useState<QuoteDraftErrors>({});
   const prefix = `quote-${brief.category}`;
   const atLimit = plan.quotes.length >= LIMITS.maxQuotes;
+  const update = (patch: Partial<QuoteDraft>) => {
+    setDraft((current) => ({ ...current, ...patch }));
+  };
 
   const submit = () => {
-    const next: Errors = {};
-    const label = vendorLabel.trim();
-    const value = parseInrAmount(amount);
-    const covered = guestsCovered.trim() === '' ? null : parseGuests(guestsCovered);
-    if (!label) next.vendorLabel = 'Give the vendor a name or label.';
-    if (value === null || value <= 0 || value > LIMITS.maxBudget)
-      next.amount = 'Enter the quoted total, for example “2.3 lakh”.';
-    if (guestsCovered.trim() !== '' && (covered === null || covered > LIMITS.maxGuests))
-      next.guestsCovered = 'Enter a whole number of guests.';
-    setErrors(next);
-    if (Object.keys(next).length > 0 || value === null) return;
-    const quote: Quote = {
-      id: newId(),
-      category: brief.category,
-      vendorLabel: label.slice(0, LIMITS.maxQuoteLabel),
-      amount: value,
-      guestsCovered: covered,
-      inclusions,
-      notes: notes.trim().slice(0, LIMITS.maxQuoteNotes),
-      status: 'received',
-    };
-    dispatch({ type: 'quote/add', quote, at: nowIso() });
+    const result = quoteFromDraft(draft, brief.category, newId());
+    if (!result.ok) {
+      setErrors(result.errors);
+      return;
+    }
+    const { quote } = result;
+    setErrors({});
+    dispatch(actions.addQuote(quote));
     notify({
       tone: 'ok',
-      text: `Added ${label}'s quote of ${formatInr(value)}. Compare it below, or accept it to use it in the budget.`,
+      text: `Added ${quote.vendorLabel}'s quote of ${formatInr(quote.amount)}. Compare it below, or accept it to use it in the budget.`,
     });
-    setVendorLabel('');
-    setAmount('');
-    setGuestsCovered('');
-    setInclusions([]);
-    setNotes('');
+    setDraft(EMPTY_QUOTE_DRAFT);
   };
 
   return (
@@ -79,56 +59,12 @@ export function QuoteForm({ brief }: { brief: VendorBrief }) {
             submit();
           }}
         >
-          <div className="row">
-            <TextField
-              id={`${prefix}-label`}
-              label="Vendor"
-              hint="A name or label you will recognise"
-              maxLength={LIMITS.maxQuoteLabel}
-              value={vendorLabel}
-              error={errors.vendorLabel}
-              onChange={(event) => {
-                setVendorLabel(event.target.value);
-              }}
-            />
-            <TextField
-              id={`${prefix}-amount`}
-              label="Quoted total"
-              hint="For example “2.3 lakh” or “₹2,30,000”"
-              inputMode="decimal"
-              value={amount}
-              error={errors.amount}
-              onChange={(event) => {
-                setAmount(event.target.value);
-              }}
-            />
-            <TextField
-              id={`${prefix}-guests`}
-              label="Guests covered (optional)"
-              inputMode="numeric"
-              value={guestsCovered}
-              error={errors.guestsCovered}
-              onChange={(event) => {
-                setGuestsCovered(event.target.value);
-              }}
-            />
-          </div>
-          <CheckboxGroup
-            legend="What does the quote clearly include?"
-            hint="Anything not ticked is flagged as “clarify before booking”."
-            name={`${prefix}-inclusions`}
-            value={inclusions}
-            options={brief.inclusions.map((item) => ({ value: item, label: item }))}
-            onChange={setInclusions}
-          />
-          <TextField
-            id={`${prefix}-notes`}
-            label="Notes (optional)"
-            maxLength={LIMITS.maxQuoteNotes}
-            value={notes}
-            onChange={(event) => {
-              setNotes(event.target.value);
-            }}
+          <QuoteFields
+            prefix={prefix}
+            draft={draft}
+            errors={errors}
+            inclusions={brief.inclusions}
+            update={update}
           />
           <div>
             <Button type="submit" variant="primary" icon="plus">
@@ -138,5 +74,74 @@ export function QuoteForm({ brief }: { brief: VendorBrief }) {
         </form>
       )}
     </details>
+  );
+}
+
+interface QuoteFieldsProps {
+  prefix: string;
+  draft: QuoteDraft;
+  errors: QuoteDraftErrors;
+  /** Items this kind of vendor's quote should state. */
+  inclusions: readonly string[];
+  update: (patch: Partial<QuoteDraft>) => void;
+}
+
+function QuoteFields({ prefix, draft, errors, inclusions, update }: QuoteFieldsProps) {
+  return (
+    <>
+      <div className="row">
+        <TextField
+          id={`${prefix}-label`}
+          label="Vendor"
+          hint="A name or label you will recognise"
+          maxLength={LIMITS.maxQuoteLabel}
+          value={draft.vendorLabel}
+          error={errors.vendorLabel}
+          onChange={(event) => {
+            update({ vendorLabel: event.target.value });
+          }}
+        />
+        <TextField
+          id={`${prefix}-amount`}
+          label="Quoted total"
+          hint="For example “2.3 lakh” or “₹2,30,000”"
+          inputMode="decimal"
+          value={draft.amount}
+          error={errors.amount}
+          onChange={(event) => {
+            update({ amount: event.target.value });
+          }}
+        />
+        <TextField
+          id={`${prefix}-guests`}
+          label="Guests covered (optional)"
+          inputMode="numeric"
+          value={draft.guestsCovered}
+          error={errors.guestsCovered}
+          onChange={(event) => {
+            update({ guestsCovered: event.target.value });
+          }}
+        />
+      </div>
+      <CheckboxGroup
+        legend="What does the quote clearly include?"
+        hint="Anything not ticked is flagged as “clarify before booking”."
+        name={`${prefix}-inclusions`}
+        value={draft.inclusions}
+        options={inclusions.map((item) => ({ value: item, label: item }))}
+        onChange={(inclusions) => {
+          update({ inclusions });
+        }}
+      />
+      <TextField
+        id={`${prefix}-notes`}
+        label="Notes (optional)"
+        maxLength={LIMITS.maxQuoteNotes}
+        value={draft.notes}
+        onChange={(event) => {
+          update({ notes: event.target.value });
+        }}
+      />
+    </>
   );
 }

@@ -15,13 +15,14 @@ import {
   GUEST_SCALED,
   MIN_BUDGET_PER_GUEST,
   MIN_PLATE_COST,
+  MIN_SAFE_CONTINGENCY_PCT,
   QUOTE_OVER_ESTIMATE_RATIO,
   RATE_BASIS,
   TIER_MULTIPLIER,
   TIGHT_BUDGET_RATIO,
   type Rate,
 } from './constants/rates.js';
-import { formatInr } from './money.js';
+import { formatInr, roundTo } from './money.js';
 import { effectiveTier } from './profile.js';
 import type { EventProfile, Quote } from './schemas.js';
 
@@ -85,15 +86,14 @@ export function categoryRate(profile: EventProfile, category: Category): Rate | 
   return { perGuest: base.perGuest * multiplier, fixed: base.fixed * multiplier };
 }
 
+/** Cost of a rate for a guest count, rounded so estimates never look falsely precise. */
 export function costForRate(rate: Rate, guests: number): number {
-  return (
-    Math.round((rate.perGuest * guests + rate.fixed) / ESTIMATE_ROUNDING_STEP) *
-    ESTIMATE_ROUNDING_STEP
-  );
+  return roundTo(rate.perGuest * guests + rate.fixed, ESTIMATE_ROUNDING_STEP);
 }
 
+/** The surprise buffer on a subtotal, rounded like every estimate. */
 export function contingencyFor(subtotal: number, pct: number): number {
-  return Math.round((subtotal * pct) / 100 / ESTIMATE_ROUNDING_STEP) * ESTIMATE_ROUNDING_STEP;
+  return roundTo((subtotal * pct) / 100, ESTIMATE_ROUNDING_STEP);
 }
 
 /** Categories that will appear in this plan. */
@@ -104,6 +104,7 @@ export function activeCategories(profile: EventProfile): Category[] {
   );
 }
 
+/** The accepted quote for a category, if the host has accepted one. */
 export function acceptedQuoteFor(quotes: readonly Quote[], category: Category): Quote | undefined {
   return quotes.find((quote) => quote.category === category && quote.status === 'accepted');
 }
@@ -139,30 +140,40 @@ function statusFor(total: number, budget: number): BudgetStatus {
   return 'within';
 }
 
-function collectWarnings(
+type WarningRule = (
   profile: EventProfile,
-  lines: BudgetLine[],
+  lines: readonly BudgetLine[],
   quotes: readonly Quote[],
-): BudgetWarning[] {
-  const warnings: BudgetWarning[] = [];
+) => BudgetWarning[];
+
+const cateringBelowFloor: WarningRule = (profile, lines) => {
   const catering = lines.find((line) => line.category === 'catering');
   const plateFloor = MIN_PLATE_COST[profile.eventType];
-  if (catering && profile.guests > 0 && catering.amount / profile.guests < plateFloor) {
-    warnings.push({
+  if (!catering || profile.guests <= 0 || catering.amount / profile.guests >= plateFloor) return [];
+  return [
+    {
       code: 'catering-below-floor',
       category: 'catering',
       message: `Food works out to ${formatInr(catering.amount / profile.guests)} per guest, below about ${formatInr(plateFloor)} that a full meal usually needs. Consider a simpler menu style rather than a smaller plate.`,
-    });
-  }
+    },
+  ];
+};
+
+const budgetPerGuestLow: WarningRule = (profile) => {
   const perGuestBudget = profile.budget / profile.guests;
   const perGuestFloor = MIN_BUDGET_PER_GUEST[profile.eventType];
-  if (perGuestBudget < perGuestFloor) {
-    warnings.push({
+  if (perGuestBudget >= perGuestFloor) return [];
+  return [
+    {
       code: 'budget-per-guest-low',
       message: `The budget is ${formatInr(perGuestBudget)} per guest. Plans of this kind usually need at least ${formatInr(perGuestFloor)}, so expect real trade-offs.`,
-    });
-  }
-  for (const line of lines) {
+    },
+  ];
+};
+
+const quoteWarnings: WarningRule = (profile, lines, quotes) =>
+  lines.flatMap((line): BudgetWarning[] => {
+    const warnings: BudgetWarning[] = [];
     if (line.basis === 'quote' && line.amount > line.estimate * QUOTE_OVER_ESTIMATE_RATIO) {
       warnings.push({
         code: 'quote-over-estimate',
@@ -175,17 +186,36 @@ function collectWarnings(
       warnings.push({
         code: 'quote-short-of-guests',
         category: line.category,
-        message: `${quote.vendorLabel} quoted for ${quote.guestsCovered} guests, but you now expect ${profile.guests}. Ask for a revised quote.`,
+        message: `${quote.vendorLabel} quoted for ${String(quote.guestsCovered)} guests, but you now expect ${String(profile.guests)}. Ask for a revised quote.`,
       });
     }
-  }
-  if (profile.contingencyPct === 0) {
-    warnings.push({
-      code: 'no-contingency',
-      message: 'There is no buffer for surprises. Even 5 % can save the day.',
-    });
-  }
-  return warnings;
+    return warnings;
+  });
+
+const noContingency: WarningRule = (profile) =>
+  profile.contingencyPct === 0
+    ? [
+        {
+          code: 'no-contingency',
+          message: `There is no buffer for surprises. Even ${String(MIN_SAFE_CONTINGENCY_PCT)} % can save the day.`,
+        },
+      ]
+    : [];
+
+/** Checks run on every estimate, in the order their warnings are shown. */
+const WARNING_RULES: readonly WarningRule[] = [
+  cateringBelowFloor,
+  budgetPerGuestLow,
+  quoteWarnings,
+  noContingency,
+];
+
+function collectWarnings(
+  profile: EventProfile,
+  lines: readonly BudgetLine[],
+  quotes: readonly Quote[],
+): BudgetWarning[] {
+  return WARNING_RULES.flatMap((rule) => rule(profile, lines, quotes));
 }
 
 /** Full budget picture for a profile. Lines always sum exactly to the subtotal. */
@@ -215,4 +245,12 @@ export function estimateBudget(
     perGuest: Math.round(total / profile.guests),
     warnings: collectWarnings(profile, lines, quotes),
   };
+}
+
+/** Budget increases are suggested in round thousands. */
+const BUDGET_ROUNDING_STEP = 1000;
+
+/** The smallest round budget that covers `total`. */
+export function budgetToCover(total: number): number {
+  return Math.ceil(total / BUDGET_ROUNDING_STEP) * BUDGET_ROUNDING_STEP;
 }

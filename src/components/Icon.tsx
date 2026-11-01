@@ -28,6 +28,7 @@ const PATHS = {
 
 export type IconName = keyof typeof PATHS;
 
+/** An inline SVG icon. Decorative unless `label` is given. */
 export function Icon({ name, label }: { name: IconName; label?: string }) {
   return (
     <svg
