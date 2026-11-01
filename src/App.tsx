@@ -15,16 +15,18 @@ const IntakeWizard = lazy(() =>
   import('./features/intake/IntakeWizard').then((m) => ({ default: m.IntakeWizard })),
 );
 
-type View = 'home' | 'intake';
+type View = 'home' | 'intake' | 'plan';
 
 export function App() {
   const { state, dispatch, today, storageIssue } = usePlanStore();
-  const [view, setView] = useState<View>('home');
+  // A saved plan opens straight into the workspace; the logo always leads back to the home page.
+  const [view, setView] = useState<View>(state.plan ? 'plan' : 'home');
 
   const openDemo = (id: DemoId) => {
     const plan = createDemoPlan(id, { id: newId(), now: nowIso(), today });
     const title = DEMO_SCENARIOS.find((demo) => demo.id === id)?.title ?? 'demo';
     dispatch({ type: 'plan/open', plan, reason: `Opened demo: ${title}`, at: nowIso() });
+    setView('plan');
   };
 
   const create = (profile: EventProfile) => {
@@ -34,7 +36,7 @@ export function App() {
       reason: 'Created a new plan',
       at: nowIso(),
     });
-    setView('home');
+    setView('plan');
   };
 
   // Starting a new plan never discards the current one: it stays in History until replaced.
@@ -84,11 +86,11 @@ export function App() {
                 today={today}
                 onCreate={create}
                 onCancel={() => {
-                  setView('home');
+                  setView(state.plan ? 'plan' : 'home');
                 }}
               />
             </Suspense>
-          ) : state.plan ? (
+          ) : view === 'plan' && state.plan ? (
             <Workspace onNewPlan={startNew} />
           ) : (
             <Home
@@ -96,6 +98,10 @@ export function App() {
                 setView('intake');
               }}
               onDemo={openDemo}
+              currentPlanTitle={state.plan?.profile.title ?? null}
+              onContinue={() => {
+                setView('plan');
+              }}
             />
           )}
         </NoticeProvider>

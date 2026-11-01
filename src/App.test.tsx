@@ -34,6 +34,25 @@ describe('home', () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it('the logo leads home from an open plan, and Continue goes back to it', async () => {
+    const user = userEvent.setup();
+    await openWeddingDemo(user);
+    await user.click(screen.getByRole('button', { name: 'Lehar home' }));
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      /Lehar handles the ripples/,
+    );
+    await user.click(screen.getByRole('button', { name: 'Continue Riya & Arjun’s wedding' }));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /Riya & Arjun’s wedding/ }),
+    ).toBeInTheDocument();
+
+    // From home, another demo opens straight into its workspace.
+    await user.click(screen.getByRole('button', { name: 'Lehar home' }));
+    await user.click(screen.getByRole('button', { name: /A 6th birthday party/ }));
+    expect(screen.getByRole('heading', { level: 1 })).not.toHaveTextContent(/Riya & Arjun/);
+    expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
+  });
+
   it('toggles the theme and remembers it', async () => {
     const user = userEvent.setup();
     renderWithPlan(<App />);

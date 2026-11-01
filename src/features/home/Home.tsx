@@ -2,7 +2,17 @@ import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { DEMO_SCENARIOS, type DemoId } from '../../core/plan';
 
-export function Home({ onStart, onDemo }: { onStart: () => void; onDemo: (id: DemoId) => void }) {
+interface HomeProps {
+  onStart: () => void;
+  onDemo: (id: DemoId) => void;
+  /** Title of the plan that is already open, if any, so the host can go straight back to it. */
+  currentPlanTitle?: string | null;
+  onContinue?: () => void;
+}
+
+export function Home({ onStart, onDemo, currentPlanTitle = null, onContinue }: HomeProps) {
+  const hasPlan = currentPlanTitle !== null && onContinue !== undefined;
+  const continueLabel = currentPlanTitle ? `Continue ${currentPlanTitle}` : 'Continue your plan';
   return (
     <div className="stack-l">
       <section className="hero" aria-labelledby="hero-title">
@@ -18,7 +28,12 @@ export function Home({ onStart, onDemo }: { onStart: () => void; onDemo: (id: De
           Lehar shows exactly how it ripples through everything. Then <strong>you</strong> decide.
         </p>
         <div className="row">
-          <Button variant="primary" icon="plus" onClick={onStart}>
+          {hasPlan ? (
+            <Button variant="primary" icon="ripple" onClick={onContinue}>
+              {continueLabel}
+            </Button>
+          ) : null}
+          <Button variant={hasPlan ? 'secondary' : 'primary'} icon="plus" onClick={onStart}>
             Start a new plan
           </Button>
           <a className="btn btn--ghost" href="#demos">
